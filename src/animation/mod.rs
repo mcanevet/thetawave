@@ -6,12 +6,13 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
-        event::EventWriter,
-        schedule::IntoSystemConfigs,
+        message::MessageWriter,
+        schedule::IntoScheduleConfigs,
         system::{Query, Res},
     },
+    image::TextureAtlasLayout,
     prelude::error,
-    sprite::{TextureAtlas, TextureAtlasLayout},
+    sprite::Sprite,
     state::condition::in_state,
     time::{Time, Timer},
 };
@@ -35,7 +36,7 @@ impl Plugin for SpriteAnimationPlugin {
             animate_sprite_system.run_if(in_state(states::AppStates::MainMenu)),
         );
 
-        app.add_event::<AnimationCompletedEvent>();
+        app.add_message::<AnimationCompletedEvent>();
     }
 }
 
@@ -75,15 +76,18 @@ pub struct AnimationComponent {
 fn animate_sprite_system(
     time: Res<Time>,
     texture_atlas_layouts: Res<Assets<TextureAtlasLayout>>,
-    mut animation_complete_event_writer: EventWriter<AnimationCompletedEvent>,
-    mut query: Query<(Entity, &mut AnimationComponent, &mut TextureAtlas)>,
+    mut animation_complete_event_writer: MessageWriter<AnimationCompletedEvent>,
+    mut query: Query<(Entity, &mut AnimationComponent, &mut Sprite)>,
 ) {
-    for (entity, mut animation, mut texture_atlas) in query.iter_mut() {
+    for (entity, mut animation, mut sprite) in query.iter_mut() {
+        let Some(texture_atlas) = sprite.texture_atlas.as_mut() else {
+            continue;
+        };
         // tick the animation timer
         animation.timer.tick(time.delta());
 
         // check if frame has completed
-        if animation.timer.finished() {
+        if animation.timer.is_finished() {
             // get the texture atlas
             if let Some(texture_atlas_layout) = texture_atlas_layouts.get(texture_atlas.layout.id())
             {
@@ -94,7 +98,7 @@ fn animate_sprite_system(
                         let new_idx =
                             (texture_atlas.index + 1) % texture_atlas_layout.textures.len();
                         if new_idx == 0 {
-                            animation_complete_event_writer.send(AnimationCompletedEvent(entity));
+                            animation_complete_event_writer.write(AnimationCompletedEvent(entity));
                         }
                         texture_atlas.index = new_idx;
                     }

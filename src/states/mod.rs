@@ -1,8 +1,8 @@
 //! Exposes a plugin that manages state transitions and the core behavior that deals with
 //! `thetawave_interface::states::AppStates`.
 use bevy::prelude::{
-    in_state, App, Commands, Component, DespawnRecursiveExt, Entity, IntoSystemConfigs,
-    IntoSystemSetConfigs, NextState, OnEnter, OnExit, Plugin, Query, ResMut, Update, With,
+    in_state, App, Commands, Component, Entity, IntoScheduleConfigs, NextState, OnEnter, OnExit,
+    Plugin, Query, ResMut, Update, With,
 };
 use bevy_asset_loader::loading_state::config::ConfigureLoadingState;
 use bevy_asset_loader::loading_state::LoadingState;
@@ -172,7 +172,7 @@ fn clear_state_system<T: Component>(
     despawn_entities_query: Query<Entity, With<T>>,
 ) {
     for entity in despawn_entities_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -182,7 +182,9 @@ fn start_mainmenu_system(
     mut next_game_state: ResMut<NextState<GameStates>>,
 ) {
     // read menu input action
-    let action_state = menu_input_query.single();
+    let Ok(action_state) = menu_input_query.single() else {
+        return;
+    };
 
     // if reset input provided reset th run
     if action_state.just_released(&MenuAction::Reset) {

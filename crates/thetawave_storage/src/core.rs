@@ -6,11 +6,11 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 use thetawave_interface::game::options::DEFAULT_OPTIONS_PROFILE_ID;
 use thiserror::Error;
-pub(super) const THETAWAVE_DB_PATH_ENVVAR: &'static str = "THETAWAVE_DB_PATH";
-const THETAWAVE_DB_FILE: &'static str = "thetawave.sqlite";
-pub(super) const USERSTAT: &'static str = "UserStat";
-pub(super) const ENEMY_KILL_HISTORY_TABLE_NAME: &'static str = "EnemiesKilled";
-pub(super) const OPTIONS_TABLE_NAME: &'static str = "Options";
+pub(super) const THETAWAVE_DB_PATH_ENVVAR: &str = "THETAWAVE_DB_PATH";
+const THETAWAVE_DB_FILE: &str = "thetawave.sqlite";
+pub(super) const USERSTAT: &str = "UserStat";
+pub(super) const ENEMY_KILL_HISTORY_TABLE_NAME: &str = "EnemiesKilled";
+pub(super) const OPTIONS_TABLE_NAME: &str = "Options";
 
 #[derive(Error, Debug, derive_more::From)]
 pub(super) enum OurDBError {
@@ -32,7 +32,7 @@ fn default_db_path() -> Result<PathBuf, OurDBError> {
     match ProjectDirs::from("org", "thetawave-game", "thetawave") {
         Some(pdirs) => {
             let game_data_dir = pdirs.data_local_dir();
-            std::fs::create_dir_all(&game_data_dir)?;
+            std::fs::create_dir_all(game_data_dir)?;
             Ok(game_data_dir.join(THETAWAVE_DB_FILE))
         }
         None => Err(OurDBError::NoDBPathFound),

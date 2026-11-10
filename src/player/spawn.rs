@@ -3,22 +3,20 @@ use crate::{
     player::{CharactersResource, PlayersResource},
 };
 use bevy::color::Color;
-use bevy::core::Name;
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::ecs::name::Name;
 use bevy::ecs::system::{Commands, Res};
-use bevy::hierarchy::{BuildChildren, ChildBuilder};
-use bevy::input::gamepad::Gamepad;
 use bevy::math::Vec3;
-use bevy::sprite::{Sprite, SpriteBundle};
+use bevy::sprite::Sprite;
 use bevy::transform::components::Transform;
 use bevy_rapier2d::dynamics::{ExternalImpulse, LockedAxes, RigidBody, Velocity};
 use bevy_rapier2d::geometry::{ActiveEvents, Collider, ColliderMassProperties, Restitution};
-use leafwing_input_manager::{prelude::ActionState, InputManagerBundle};
 use thetawave_assets::PlayerAssets;
 use thetawave_interface::abilities::{
     AbilitiesResource, ChargeAbilityBundle, SlotOneAbilityType, SlotTwoAbilityType,
     StandardWeaponAbilityBundle,
 };
-use thetawave_interface::input::{InputsResource, PlayerAction};
+use thetawave_interface::input::InputsResource;
 use thetawave_interface::player::{PlayerBundle, PlayerIDComponent};
 use thetawave_interface::{health::HealthComponent, player::PlayerInput, states::GameCleanup};
 
@@ -36,7 +34,7 @@ trait PlayerAbilityChildBuilderExt {
     );
 }
 
-impl PlayerAbilityChildBuilderExt for ChildBuilder<'_> {
+impl PlayerAbilityChildBuilderExt for ChildSpawnerCommands<'_> {
     fn spawn_slot_1_ability(
         &mut self,
         abilities_res: &AbilitiesResource,
@@ -107,8 +105,8 @@ pub(super) fn spawn_players_system(
             // spawn the player
             let mut player_entity = commands.spawn_empty();
             player_entity
-                .insert(SpriteBundle {
-                    texture: player_assets.get_asset(&character.character_type),
+                .insert(Sprite {
+                    image: player_assets.get_asset(&character.character_type),
                     ..Default::default()
                 })
                 .insert(RigidBody::Dynamic)
@@ -138,16 +136,15 @@ pub(super) fn spawn_players_system(
                     ),
                     ..Default::default()
                 })
-                .insert(InputManagerBundle::<PlayerAction> {
-                    action_state: ActionState::default(),
-                    input_map: match player_data.input {
-                        PlayerInput::Keyboard => inputs_res.player_keyboard.clone(),
-                        PlayerInput::Gamepad(id) => inputs_res
-                            .player_gamepad
-                            .clone()
-                            .set_gamepad(Gamepad { id })
-                            .to_owned(),
-                    },
+                // Bevy 0.20 port: `InputManagerBundle` was removed; `InputMap`
+                // provides its `ActionState` via required components.
+                .insert(match player_data.input {
+                    PlayerInput::Keyboard => inputs_res.player_keyboard.clone(),
+                    PlayerInput::Gamepad(gamepad_entity) => inputs_res
+                        .player_gamepad
+                        .clone()
+                        .set_gamepad(gamepad_entity)
+                        .to_owned(),
                 })
                 .insert(Collider::cuboid(collider_size_hx, collider_size_hy))
                 .insert(Velocity::default())
@@ -167,20 +164,18 @@ pub(super) fn spawn_players_system(
             // add colored outline to player if multiplayer
             if is_multiplayer {
                 player_entity.with_children(|parent| {
-                    parent
-                        .spawn(SpriteBundle {
-                            texture: player_assets.get_outline_asset(&character.character_type),
-                            sprite: Sprite {
-                                color: if matches!(player_id, PlayerIDComponent::One) {
-                                    Color::srgb(0.7, 0.0, 0.0)
-                                } else {
-                                    Color::srgb(0.0, 0.0, 1.0)
-                                },
-                                ..Default::default()
+                    parent.spawn((
+                        Sprite {
+                            image: player_assets.get_outline_asset(&character.character_type),
+                            color: if matches!(player_id, PlayerIDComponent::One) {
+                                Color::srgb(0.7, 0.0, 0.0)
+                            } else {
+                                Color::srgb(0.0, 0.0, 1.0)
                             },
                             ..Default::default()
-                        })
-                        .insert(Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)));
+                        },
+                        Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)),
+                    ));
                 });
             }
         }

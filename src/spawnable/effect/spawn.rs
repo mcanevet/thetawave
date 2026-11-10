@@ -2,11 +2,13 @@ use crate::animation::AnimationComponent;
 use crate::spawnable::effect::{EffectComponent, TextEffectData, TextEffectsResource};
 use crate::spawnable::{EffectsResource, InitialMotion, SpawnEffectEvent, SpawnableComponent};
 use bevy::color::Color;
+use bevy::image::TextureAtlas;
 use bevy::prelude::{
-    in_state, App, Commands, EventReader, IntoSystemConfigs, Name, Plugin, Res, Sprite, Text,
-    Text2dBundle, TextStyle, Timer, TimerMode, Transform, Update, Vec3,
+    in_state, App, Commands, IntoScheduleConfigs, MessageReader, Name, Plugin, Res, Sprite, Timer,
+    TimerMode, Transform, Update, Vec3,
 };
-use bevy::sprite::{SpriteBundle, TextureAtlas};
+use bevy::sprite::Text2d;
+use bevy::text::{TextColor, TextFont};
 use bevy::utils::default;
 use bevy_rapier2d::prelude::{LockedAxes, RigidBody, Velocity};
 use rand::Rng;
@@ -37,7 +39,7 @@ impl Plugin for EffectSpawnPlugin {
 /// it triggers the spawning of the corresponding effect.
 fn spawn_effect_system(
     mut commands: Commands,
-    mut event_reader: EventReader<SpawnEffectEvent>,
+    mut event_reader: MessageReader<SpawnEffectEvent>,
     effects_resource: Res<EffectsResource>,
     effect_assets: Res<EffectAssets>,
     game_options: Res<GameOptions>,
@@ -63,7 +65,7 @@ fn spawn_effect_system(
 /// it triggers the spawning of the corresponding text effect.
 fn spawn_text_effect_system(
     mut commands: Commands,
-    mut event_reader: EventReader<SpawnEffectEvent>,
+    mut event_reader: MessageReader<SpawnEffectEvent>,
     effects_resource: Res<EffectsResource>,
     text_effects_resource: Res<TextEffectsResource>,
     ui_assets: Res<UiAssets>,
@@ -103,25 +105,23 @@ fn spawn_text_effect(
     let text_effect_data: &TextEffectData = &text_effects_resource.text_effects[text_effect_type];
 
     // create text
-    let text = Text::from_section(
-        match text_effect_type {
-            TextEffectType::DamageDealt => effect_text.unwrap_or("0".to_string()),
+    let text = match text_effect_type {
+        TextEffectType::DamageDealt => effect_text.unwrap_or("0".to_string()),
 
-            TextEffectType::ConsumableCollected(_) => text_effect_data.text.clone(),
-        },
-        TextStyle {
-            font: ui_assets.lunchds_font.clone(),
-            font_size: text_effect_data.font_size,
-            color: Color::Srgba(text_effect_data.text_color),
-        },
-    );
+        TextEffectType::ConsumableCollected(_) => text_effect_data.text.clone(),
+    };
 
     // spawn text effect entity
     commands
-        .spawn(Text2dBundle {
-            text,
-            ..Default::default()
-        })
+        .spawn((
+            Text2d::new(text),
+            TextFont {
+                font: ui_assets.lunchds_font.clone().into(),
+                font_size: text_effect_data.font_size.into(),
+                ..Default::default()
+            },
+            TextColor(Color::Srgba(text_effect_data.text_color)),
+        ))
         .insert(
             transform
                 .with_translation(
@@ -168,20 +168,19 @@ fn spawn_effect(
     let mut effect_transform = transform;
     effect_transform.translation.z = effect_data.z_level;
 
+    // Bevy 0.20 port: `SpriteBundle`/separate `TextureAtlas` component were
+    // replaced by a single `Sprite` with an embedded `texture_atlas`.
     effect
-        .insert(SpriteBundle {
-            texture: effect_assets.get_image(effect_type).unwrap_or_default(),
-            sprite: Sprite {
-                color: effect_data.affine_bloom_transformation(game_options.bloom_intensity),
-                ..Default::default()
-            },
-            ..default()
-        })
-        .insert(TextureAtlas {
-            layout: effect_assets
-                .get_texture_atlas_layout(effect_type)
-                .unwrap_or_default(),
-            ..default()
+        .insert(Sprite {
+            image: effect_assets.get_image(effect_type).unwrap_or_default(),
+            texture_atlas: Some(TextureAtlas {
+                layout: effect_assets
+                    .get_texture_atlas_layout(effect_type)
+                    .unwrap_or_default(),
+                ..default()
+            }),
+            color: effect_data.affine_bloom_transformation(game_options.bloom_intensity),
+            ..Default::default()
         })
         .insert(AnimationComponent {
             timer: Timer::from_seconds(effect_data.animation.frame_duration, TimerMode::Repeating),

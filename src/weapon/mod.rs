@@ -3,8 +3,8 @@ use bevy::{
     app::{App, Plugin, Update},
     ecs::{
         entity::Entity,
-        event::EventWriter,
-        schedule::IntoSystemConfigs,
+        message::MessageWriter,
+        schedule::IntoScheduleConfigs,
         system::{Query, Res},
     },
     math::Vec2,
@@ -44,7 +44,7 @@ impl WeaponExt for Weapon {
         if self.is_enabled {
             // tick the initial timer if there is still time remaining
             // if the initial timer is finished then the reload timer is ticked
-            if !self.initial_timer.finished() {
+            if !self.initial_timer.is_finished() {
                 self.initial_timer.tick(delta_time);
                 None
             } else {
@@ -67,18 +67,18 @@ impl WeaponExt for Weapon {
 fn update_weapon_system(
     mut weapon_query: Query<(Entity, &mut WeaponsComponent, &Transform, &Velocity)>,
     time: Res<Time>,
-    mut fire_weapon: EventWriter<FireWeaponEvent>,
+    mut fire_weapon: MessageWriter<FireWeaponEvent>,
 ) {
     for (entity, mut weapon_component, transform, velocity) in weapon_query.iter_mut() {
         for weapon in weapon_component.weapons.iter_mut() {
             if let Some(weapon_projectile_data) = weapon.update(time.delta()) {
                 // pass velocity into the spawned blast
                 let initial_motion = InitialMotion {
-                    linvel: Some(velocity.linvel),
+                    linvel: Some(velocity.linear),
                     ..Default::default()
                 };
 
-                fire_weapon.send(FireWeaponEvent {
+                fire_weapon.write(FireWeaponEvent {
                     weapon_projectile_data,
                     source_transform: *transform,
                     source_entity: entity,

@@ -1,22 +1,23 @@
+#![allow(deprecated)]
+
 //! Provides the layout (trait on `bevy::hierarchy::ChildBUilder`) and behavior (systems) to put 4
 //! vertically layed out on the main menu, and change the state from
 //! `thetawave_interface::states::AppStates::MainMenu` to
 //! `thetawave_interface::states::AppStates::CharacterSelection`
 use crate::ui::button::{
-    ButtonActionComponent, ButtonActionEvent, ButtonActionType, UiButtonChildBuilderExt,
+    Button, ButtonActionComponent, ButtonActionEvent, ButtonActionType, UiButtonChildBuilderExt,
 };
 use bevy::{
     asset::Handle,
+    ecs::hierarchy::{ChildSpawnerCommands, Children},
     ecs::{
-        event::EventWriter,
+        message::MessageWriter,
         query::{Changed, With},
         system::{Local, Query},
     },
-    hierarchy::{ChildBuilder, Children},
     log::{error, info},
-    sprite::TextureAtlas,
     text::Font,
-    ui::{widget::Button, Interaction, Style, UiRect, Val},
+    ui::{widget::ImageNode, Interaction, Node, UiRect, Val},
 };
 use leafwing_input_manager::prelude::ActionState;
 use thetawave_assets::UiAssets;
@@ -44,7 +45,7 @@ pub(super) trait UiChildBuilderExt {
     fn spawn_main_menu_buttons(&mut self, ui_assets: &UiAssets, font: Handle<Font>) -> &mut Self;
 }
 
-impl UiChildBuilderExt for ChildBuilder<'_> {
+impl UiChildBuilderExt for ChildSpawnerCommands<'_> {
     fn spawn_main_menu_buttons(&mut self, ui_assets: &UiAssets, font: Handle<Font>) -> &mut Self {
         for action in MAIN_MENU_BUTTON_ORDER.iter() {
             self.spawn_button(
@@ -93,12 +94,12 @@ pub(super) fn main_menu_button_selection_and_click_system(
         (Changed<Interaction>, With<Button>),
     >,
     menu_explorer_query: Query<&ActionState<MenuAction>, With<MainMenuExplorer>>,
-    mut button_texture_query: Query<(&mut TextureAtlas, &mut Style)>,
+    mut button_texture_query: Query<(&mut ImageNode, &mut Node)>,
     // Index into `MAIN_MENU_BUTTON_ORDER`, possibly mod its size
     mut ui_state: Local<MainMenuUIState>,
     // The main side effects of this system/UI component/widget
-    mut sound_effect: EventWriter<PlaySoundEffectEvent>,
-    mut button_event_writer: EventWriter<ButtonActionEvent>,
+    mut sound_effect: MessageWriter<PlaySoundEffectEvent>,
+    mut button_event_writer: MessageWriter<ButtonActionEvent>,
 ) {
     // We do a fair number of linear traversals, but there should only be < 10 buttons, children,
     // etc. So all of those linear time operations should actually be fast.
@@ -114,7 +115,7 @@ pub(super) fn main_menu_button_selection_and_click_system(
             _ => None,
         });
     // Apply d-pad/arrow keys. true = up, false = down
-    let contribution_from_arrow_inputs: Option<bool> = match menu_explorer_query.get_single() {
+    let contribution_from_arrow_inputs: Option<bool> = match menu_explorer_query.single() {
         Err(_) => None,
         Ok(x) => x
             .get_just_pressed()
@@ -126,16 +127,14 @@ pub(super) fn main_menu_button_selection_and_click_system(
             }),
     };
     let player_confirmed_button_selection: Option<ButtonActionType> = menu_explorer_query
-        .get_single()
+        .single()
         .ok()
-        .map(|x| match &ui_state.current_selected_button_and_cause {
-            Some((idx, _)) if x.just_released(&MenuAction::Confirm) => Some(
-                MAIN_MENU_BUTTON_ORDER[(*idx as usize % MAIN_MENU_BUTTON_ORDER.len()) as usize]
-                    .clone(),
-            ),
+        .and_then(|x| match &ui_state.current_selected_button_and_cause {
+            Some((idx, _)) if x.just_released(&MenuAction::Confirm) => {
+                Some(MAIN_MENU_BUTTON_ORDER[*idx as usize % MAIN_MENU_BUTTON_ORDER.len()])
+            }
             _ => None,
-        })
-        .flatten();
+        });
     // Note that this uses the Changed<_> query filter, which allows us to detect when the mouse
     // was clicked THEN RELEASED. Using the `main_menu_button_mouse_movements` query would make
     // this Some whenever the mouse is just pressed down on a button.
@@ -204,25 +203,25 @@ pub(super) fn main_menu_button_selection_and_click_system(
         &next_frame_ui_state.current_selected_button_and_cause,
     ) {
         (Some((_, _)), None) => {
-            sound_effect.send(PlaySoundEffectEvent {
+            sound_effect.write(PlaySoundEffectEvent {
                 sound_effect_type: SoundEffectType::ButtonRelease,
             });
         }
         (Some((old, _)), Some((new, _))) if *old != *new => {
-            sound_effect.send(PlaySoundEffectEvent {
+            sound_effect.write(PlaySoundEffectEvent {
                 sound_effect_type: SoundEffectType::ButtonSelect,
             });
         }
         (None, Some(_)) => {
-            sound_effect.send(PlaySoundEffectEvent {
+            sound_effect.write(PlaySoundEffectEvent {
                 sound_effect_type: SoundEffectType::ButtonSelect,
             });
         }
         _ => {}
     };
     if let Some(action) = first_button_mouse_clicked.or(player_confirmed_button_selection) {
-        button_event_writer.send(ButtonActionEvent::from(action));
-        sound_effect.send(PlaySoundEffectEvent {
+        button_event_writer.write(ButtonActionEvent::from(action));
+        sound_effect.write(PlaySoundEffectEvent {
             sound_effect_type: SoundEffectType::ButtonConfirm,
         });
     }
@@ -239,16 +238,18 @@ pub(super) fn main_menu_button_selection_and_click_system(
     // Update the sprite sheets of each buttons to animate/"select" exactly 0 or 1.
     for (action, children) in main_menu_buttons.iter() {
         if let Some(button_child_entity) = children.first() {
-            if let Ok((mut texture_atlas, mut style)) =
+            if let Ok((mut image_node, mut style)) =
                 button_texture_query.get_mut(*button_child_entity)
             {
-                if next_frame_button_state == Some(action.action) {
-                    texture_atlas.index = 1;
-                    style.padding = BUTTON_TEXTURE_PADDING_HOVERED;
-                } else {
-                    texture_atlas.index = 0;
-                    style.padding = BUTTON_TEXTURE_PADDING;
+                let hovered = next_frame_button_state == Some(action.action);
+                if let Some(atlas) = image_node.texture_atlas.as_mut() {
+                    atlas.index = if hovered { 1 } else { 0 };
                 }
+                style.padding = if hovered {
+                    BUTTON_TEXTURE_PADDING_HOVERED
+                } else {
+                    BUTTON_TEXTURE_PADDING
+                };
             } else {
                 error!("Button sprite sheet not found");
             }

@@ -1,5 +1,6 @@
-use bevy::{ecs::system::Resource, utils::HashMap};
+use bevy::ecs::resource::Resource;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use thetawave_interface::character::{Character, CharacterType};
 

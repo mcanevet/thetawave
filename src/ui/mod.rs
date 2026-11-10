@@ -31,7 +31,7 @@ pub(super) struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ButtonActionEvent>();
+        app.add_message::<ButtonActionEvent>();
         app.add_plugins(GameUiPlugin);
         app.add_plugins(MainMenuUIPlugin);
         app.add_plugins(CharacterSelectionPlugin);

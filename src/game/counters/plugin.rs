@@ -1,7 +1,7 @@
 /// Expose all of the mutations for the within-game metric counters via a bevy plugin.
 use crate::collision::SortedCollisionEvent;
 use crate::spawnable::FireWeaponEvent;
-use bevy::prelude::{debug, App, Entity, EventReader, OnEnter, Plugin, Query, ResMut, Update};
+use bevy::prelude::{debug, App, Entity, MessageReader, OnEnter, Plugin, Query, ResMut, Update};
 use thetawave_interface::player::PlayerIDComponent;
 
 use std::collections::HashMap;
@@ -62,11 +62,11 @@ fn inc_completed_games_played_counter(
 
 fn inc_in_memory_mob_destroyed_for_current_game_cache(
     mut mobs_destroyed_counters_by_player: ResMut<MobKillsByPlayerForCurrentGame>,
-    mut mob_destroyed_event_reader: EventReader<MobDestroyedEvent>,
+    mut mob_destroyed_event_reader: MessageReader<MobDestroyedEvent>,
 ) {
     let player_1_mob_counters = (**mobs_destroyed_counters_by_player)
         .entry(DEFAULT_USER_ID)
-        .or_insert_with(Default::default);
+        .or_default();
     for event in mob_destroyed_event_reader.read() {
         if let MobType::Enemy(enemy_type) = &event.mob_type {
             inc_usize_map(player_1_mob_counters, *enemy_type);
@@ -100,7 +100,7 @@ fn mob_projectile_collision_originates_from_entity(
 }
 fn inc_in_memory_projectile_hits_counter_system(
     mut current_game_user_stats: ResMut<UserStatsByPlayerForCurrentGameCache>,
-    mut collision_event_reader: EventReader<SortedCollisionEvent>,
+    mut collision_event_reader: MessageReader<SortedCollisionEvent>,
     player_query: Query<(Entity, &PlayerIDComponent)>,
 ) {
     if let Some(player_1_entity_id) = find_player_1(&player_query) {
@@ -118,7 +118,7 @@ fn inc_in_memory_projectile_hits_counter_system(
 
 fn count_shots_fired_by_player_1_system(
     mut current_game_user_stats: ResMut<UserStatsByPlayerForCurrentGameCache>,
-    mut fire_weapon_event_reader: EventReader<FireWeaponEvent>,
+    mut fire_weapon_event_reader: MessageReader<FireWeaponEvent>,
     query: Query<(Entity, &PlayerIDComponent)>,
 ) {
     let maybe_player_1_entity_id = query
@@ -193,7 +193,7 @@ mod test {
     use crate::spawnable::FireWeaponEvent;
     use bevy::input::InputPlugin;
     use bevy::math::Vec2;
-    use bevy::prelude::{App, Component, Events};
+    use bevy::prelude::{App, Component};
     use bevy::state::app::{AppExtStates, StatesPlugin};
     use bevy::MinimalPlugins;
     use thetawave_interface::audio::SoundEffectType;
@@ -219,9 +219,9 @@ mod test {
         ));
         app.init_state::<AppStates>()
             .init_state::<GameStates>()
-            .add_event::<SortedCollisionEvent>()
-            .add_event::<MobDestroyedEvent>()
-            .add_event::<FireWeaponEvent>()
+            .add_message::<SortedCollisionEvent>()
+            .add_message::<MobDestroyedEvent>()
+            .add_message::<FireWeaponEvent>()
             .insert_resource(UserStatsByPlayerForCurrentGameCache::default());
 
         app
@@ -232,12 +232,9 @@ mod test {
     fn test_increment_player_1_mobs_killed_counter() {
         let mut app = base_app_required_for_counting_metrics();
         app.insert_resource(MobKillsByPlayerForCurrentGame::default());
-        app.add_event::<MobDestroyedEvent>();
-        // app.add_systems(Update, send_mob_drone_destroyed_by_dummy_entity_event);
 
-        let entity = app.world_mut().spawn(NullComponent::default()).id();
-        let mut events = app.world_mut().resource_mut::<Events<MobDestroyedEvent>>();
-        events.send(MobDestroyedEvent {
+        let entity = app.world_mut().spawn(NullComponent).id();
+        app.world_mut().write_message(MobDestroyedEvent {
             mob_type: MobType::Enemy(EnemyMobType::Drone),
             entity,
             is_boss: false,
@@ -288,7 +285,7 @@ mod test {
             initial_motion: Default::default(),
         };
         app.world_mut()
-            .send_event(player_1_projectile_event.clone());
+            .write_message(player_1_projectile_event.clone());
         app.update();
         let n_p1_shots_fired = app
             .world()
@@ -300,7 +297,7 @@ mod test {
             .total_shots_fired;
         assert_eq!(n_p1_shots_fired, 1);
         app.world_mut()
-            .send_event(player_1_projectile_event.clone());
+            .write_message(player_1_projectile_event.clone());
         app.update();
         // apply_state_transition(&mut app.world);
         let n_p1_shots_fired_2 = app

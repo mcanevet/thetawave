@@ -5,12 +5,9 @@ use bevy::{
         component::Component,
         system::{Commands, Res},
     },
-    hierarchy::BuildChildren,
     time::{Timer, TimerMode},
-    ui::{
-        node_bundles::{ImageBundle, NodeBundle},
-        PositionType, Style, UiRect, Val,
-    },
+    ui::{widget::ImageNode, BackgroundColor, Node, PositionType, UiRect, Val},
+    utils::default,
 };
 use thetawave_interface::states::PauseCleanup;
 
@@ -25,29 +22,29 @@ pub fn setup_pause_system(
     playing_on_arcade: Res<PlayingOnArcadeResource>,
 ) {
     commands
-        .spawn(NodeBundle {
-            style: Style {
+        .spawn((
+            Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 position_type: PositionType::Absolute,
                 ..Default::default()
             },
-            background_color: Color::srgba(0.5, 0.5, 0.5, 0.1).into(),
-            ..Default::default()
-        })
+            BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.1)),
+        ))
         .insert(PauseCleanup)
         .insert(PauseUI)
         .with_children(|parent| {
             parent
-                .spawn(ImageBundle {
-                    image: asset_server
-                        .load(if **playing_on_arcade {
+                .spawn((
+                    ImageNode {
+                        image: asset_server.load(if **playing_on_arcade {
                             "texture/restart_game_prompt_arcade.png"
                         } else {
                             "texture/restart_game_prompt_keyboard.png"
-                        })
-                        .into(),
-                    style: Style {
+                        }),
+                        ..default()
+                    },
+                    Node {
                         width: Val::Px(400.0),
                         height: Val::Px(100.0),
                         margin: UiRect {
@@ -58,8 +55,7 @@ pub fn setup_pause_system(
                         },
                         ..Default::default()
                     },
-                    ..Default::default()
-                })
+                ))
                 .insert(BouncingPromptComponent {
                     flash_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
                     is_active: true,

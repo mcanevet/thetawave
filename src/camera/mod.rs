@@ -2,13 +2,13 @@
 //! is emitted.
 use crate::game;
 use bevy::app::{App, Plugin, Startup, Update};
-use bevy::core_pipeline::bloom::BloomPrefilterSettings;
-use bevy::core_pipeline::core_2d::{Camera2d, Camera2dBundle};
-use bevy::core_pipeline::core_3d::Camera3dBundle;
-use bevy::core_pipeline::{bloom::BloomSettings, tonemapping::Tonemapping};
+use bevy::camera::{
+    Camera, Camera2d, Camera3d, ClearColorConfig, Hdr, PerspectiveProjection, Projection,
+};
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::{Commands, Res};
 use bevy::math::Vec3;
-use bevy::render::camera::{Camera, ClearColorConfig, PerspectiveProjection, Projection};
+use bevy::post_process::bloom::{Bloom, BloomPrefilter};
 use bevy::transform::components::Transform;
 use bevy::utils::default;
 
@@ -26,7 +26,7 @@ pub(super) struct CameraPlugin;
 /// takes damage.
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ScreenShakeEvent>();
+        app.add_message::<ScreenShakeEvent>();
         app.add_systems(Startup, setup_cameras_system);
         app.add_systems(
             Update,
@@ -47,28 +47,25 @@ fn setup_cameras_system(
 ) {
     // setup cameras
     // 2d camera for sprites
-
-    let camera_2d = Camera2dBundle {
-        transform: Transform::from_xyz(0.0, 0.0, game_parameters.camera_z),
-        camera_2d: Camera2d,
-        camera: Camera {
+    // Bevy 0.20 port: camera bundles were removed; required components
+    // supply defaults, HDR is now the `Hdr` marker component, and bloom
+    // moved to `bevy::post_process::bloom::Bloom`.
+    commands.spawn((
+        Camera2d,
+        Camera {
             order: 1,
-            hdr: true,
             clear_color: ClearColorConfig::None,
             ..default()
         },
-        tonemapping: Tonemapping::TonyMcMapface,
-        ..default()
-    };
-
-    commands.spawn((
-        camera_2d,
-        BloomSettings {
-            prefilter_settings: BloomPrefilterSettings {
+        Hdr,
+        Tonemapping::TonyMcMapface,
+        Transform::from_xyz(0.0, 0.0, game_parameters.camera_z),
+        Bloom {
+            prefilter: BloomPrefilter {
                 threshold: 1.0,
                 threshold_softness: 0.2,
             },
-            ..BloomSettings::OLD_SCHOOL
+            ..Bloom::OLD_SCHOOL
         },
         screen_shake::ScreenShakeComponent {
             trauma: 0.0,
@@ -82,20 +79,20 @@ fn setup_cameras_system(
     ));
 
     // 3d camera for background objects
-    let camera_3d = Camera3dBundle {
-        camera: Camera {
+    commands.spawn((
+        // Bevy 0.20 port: `Camera3d` gained fields; use `Default`.
+        Camera3d::default(),
+        Camera {
             order: 0,
-            hdr: true,
             ..default()
         },
-        tonemapping: Tonemapping::TonyMcMapface,
-        transform: Transform::from_xyz(0.0, 0.0, game_parameters.camera_z)
-            .looking_at(Vec3::ZERO, Vec3::Y),
-        projection: Projection::Perspective(PerspectiveProjection {
+        Hdr,
+        Tonemapping::TonyMcMapface,
+        Transform::from_xyz(0.0, 0.0, game_parameters.camera_z).looking_at(Vec3::ZERO, Vec3::Y),
+        Projection::Perspective(PerspectiveProjection {
             far: 10000.0,
             ..Default::default()
         }),
-        ..Default::default()
-    };
-    commands.spawn((camera_3d, BloomSettings::default()));
+        Bloom::default(),
+    ));
 }

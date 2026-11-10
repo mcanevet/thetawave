@@ -1,8 +1,10 @@
+#![allow(deprecated)]
+
 //! Systems to spawn and style the character selection screen, where each player picks a character
 //! //! from one of a few options, and possibly enables/diables the tutorial.
 
 use super::button::{
-    ButtonActionComponent, ButtonActionEvent, ButtonActionType, UiButtonChildBuilderExt,
+    Button, ButtonActionComponent, ButtonActionEvent, ButtonActionType, UiButtonChildBuilderExt,
 };
 use crate::{game::GameParametersResource, player::CharactersResource};
 use bevy::{
@@ -12,24 +14,23 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
-        event::{EventReader, EventWriter},
+        hierarchy::{ChildSpawnerCommands, Children},
+        message::{MessageReader, MessageWriter},
         query::{With, Without},
-        schedule::IntoSystemConfigs,
+        schedule::IntoScheduleConfigs,
         system::{Commands, Local, Query, Res, ResMut},
     },
-    hierarchy::{BuildChildren, ChildBuilder, Children, DespawnRecursiveExt},
-    input::gamepad::{Gamepad, GamepadButtonChangedEvent},
+    input::gamepad::GamepadButtonChangedEvent,
     prelude::{in_state, NextState, OnEnter},
-    text::{Font, Text, TextStyle},
+    text::{Font, Justify, TextColor, TextFont, TextLayout},
     ui::{
-        node_bundles::{ImageBundle, NodeBundle, TextBundle},
-        widget::Button,
-        AlignContent, AlignItems, AlignSelf, FlexDirection, Interaction, JustifyContent, Style,
-        UiImage, UiRect, Val,
+        widget::{ImageNode, Text},
+        AlignContent, AlignItems, AlignSelf, BackgroundColor, FlexDirection, Interaction,
+        JustifyContent, Node, UiRect, Val,
     },
     utils::default,
 };
-use leafwing_input_manager::{prelude::ActionState, InputManagerBundle};
+use leafwing_input_manager::prelude::ActionState;
 use std::collections::VecDeque;
 use strum::IntoEnumIterator;
 use thetawave_assets::{PlayerAssets, UiAssets};
@@ -49,7 +50,7 @@ use thetawave_interface::{
 pub(super) struct CharacterSelectionPlugin;
 impl Plugin for CharacterSelectionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<PlayerJoinEvent>();
+        app.add_message::<PlayerJoinEvent>();
 
         app.add_systems(
             Update,
@@ -259,53 +260,48 @@ trait UiPlayerJoinChildBuilderExt {
     fn spawn_stats(&mut self, ui_assets: &UiAssets, character: &Character);
 }
 
-impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
+impl UiPlayerJoinChildBuilderExt for ChildSpawnerCommands<'_> {
     fn spawn_stats(&mut self, ui_assets: &UiAssets, character: &Character) {
         // Iterate over each character stat type
         for stat in CharacterStatType::iter() {
             // Spawn a node for the stat bar container
-            self.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(12.0),
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            self.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(12.0),
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .with_children(|parent| {
                 // Spawn an image for the stat icon
-                parent.spawn(ImageBundle {
-                    image: ui_assets.get_stat_icon(&stat).into(),
-                    style: Style {
+                parent.spawn((
+                    ImageNode {
+                        image: ui_assets.get_stat_icon(&stat),
+                        ..default()
+                    },
+                    Node {
                         margin: UiRect::all(Val::Px(5.0)),
                         ..default()
                     },
-                    ..default()
-                });
+                ));
 
                 // Spawn a node for the stat bar background
                 parent
-                    .spawn(NodeBundle {
-                        style: Style {
-                            height: Val::Percent(100.0),
-                            width: Val::Percent(100.0),
-                            ..default()
-                        },
+                    .spawn(Node {
+                        height: Val::Percent(100.0),
+                        width: Val::Percent(100.0),
                         ..default()
                     })
                     .with_children(|parent| {
                         // Spawn a node to represent the stat percentage
-                        parent.spawn(NodeBundle {
-                            style: Style {
+                        parent.spawn((
+                            Node {
                                 width: Val::Percent(character.get_stat_percent(&stat)),
                                 height: Val::Percent(50.0),
                                 align_self: AlignSelf::Center,
                                 ..default()
                             },
-                            background_color: Srgba::WHITE.into(),
-                            ..default()
-                        });
+                            BackgroundColor(Srgba::WHITE.into()),
+                        ));
                     });
             });
         }
@@ -321,29 +317,24 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
         // Check if the character has a slot 1 ability
         if let Some(slot_1_ability_type) = &character.slot_1_ability {
             // Spawn a node for the slot 1 ability description container
-            self.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(25.0),
-                    align_content: AlignContent::Center,
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            self.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(25.0),
+                align_content: AlignContent::Center,
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .with_children(|parent| {
                 // Spawn an image for the ability slot
                 parent
-                    .spawn(ImageBundle {
-                        image: ui_assets.get_ability_slot_image(false).into(),
+                    .spawn(ImageNode {
+                        image: ui_assets.get_ability_slot_image(false),
                         ..default()
                     })
                     .with_children(|parent| {
                         // Spawn an image for the slot 1 ability
-                        parent.spawn(ImageBundle {
-                            image: ui_assets
-                                .get_slot_1_ability_image(slot_1_ability_type)
-                                .into(),
+                        parent.spawn(ImageNode {
+                            image: ui_assets.get_slot_1_ability_image(slot_1_ability_type),
                             ..default()
                         });
                     });
@@ -351,16 +342,19 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
                 // Check if there is a description for the slot 1 ability
                 if let Some(ability_desc) = abilities_desc_res.slot_one.get(slot_1_ability_type) {
                     // Spawn text for the slot 1 ability description
-                    parent.spawn(TextBundle {
-                        text: Text::from_section(
-                            ability_desc,
-                            TextStyle {
-                                font: font.clone(),
-                                font_size: 16.0,
-                                color: Color::WHITE,
-                            },
-                        ),
-                        style: Style {
+                    parent.spawn((
+                        Text::new(ability_desc),
+                        TextFont {
+                            font: font.clone().into(),
+                            font_size: 16.0.into(),
+                            ..Default::default()
+                        },
+                        TextColor(Color::WHITE),
+                        TextLayout {
+                            justify: Justify::Center,
+                            ..Default::default()
+                        },
+                        Node {
                             margin: UiRect {
                                 left: Val::Px(5.0),
                                 right: Val::Px(5.0),
@@ -368,8 +362,7 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
                             },
                             ..default()
                         },
-                        ..default()
-                    });
+                    ));
                 }
             });
         }
@@ -377,29 +370,24 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
         // Check if the character has a slot 2 ability
         if let Some(slot_2_ability_type) = &character.slot_2_ability {
             // Spawn a node for the slot 2 ability description container
-            self.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(25.0),
-                    align_content: AlignContent::Center,
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            self.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(25.0),
+                align_content: AlignContent::Center,
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .with_children(|parent| {
                 // Spawn an image for the ability slot
                 parent
-                    .spawn(ImageBundle {
-                        image: ui_assets.get_ability_slot_image(false).into(),
+                    .spawn(ImageNode {
+                        image: ui_assets.get_ability_slot_image(false),
                         ..default()
                     })
                     .with_children(|parent| {
                         // Spawn an image for the slot 2 ability
-                        parent.spawn(ImageBundle {
-                            image: ui_assets
-                                .get_slot_2_ability_image(slot_2_ability_type)
-                                .into(),
+                        parent.spawn(ImageNode {
+                            image: ui_assets.get_slot_2_ability_image(slot_2_ability_type),
                             ..default()
                         });
                     });
@@ -407,16 +395,19 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
                 // Check if there is a description for the slot 2 ability
                 if let Some(ability_desc) = abilities_desc_res.slot_two.get(slot_2_ability_type) {
                     // Spawn text for the slot 2 ability description
-                    parent.spawn(TextBundle {
-                        text: Text::from_section(
-                            ability_desc,
-                            TextStyle {
-                                font: font.clone(),
-                                font_size: 16.0,
-                                color: Color::WHITE,
-                            },
-                        ),
-                        style: Style {
+                    parent.spawn((
+                        Text::new(ability_desc),
+                        TextFont {
+                            font: font.clone().into(),
+                            font_size: 16.0.into(),
+                            ..Default::default()
+                        },
+                        TextColor(Color::WHITE),
+                        TextLayout {
+                            justify: Justify::Center,
+                            ..Default::default()
+                        },
+                        Node {
                             margin: UiRect {
                                 left: Val::Px(5.0),
                                 right: Val::Px(5.0),
@@ -424,8 +415,7 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
                             },
                             ..default()
                         },
-                        ..default()
-                    });
+                    ));
                 }
             });
         }
@@ -438,14 +428,11 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
         players: Vec<u8>,
     ) {
         // Spawn a node for the player join row container
-        self.spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(50.0),
-                justify_content: JustifyContent::Center,
-                flex_direction: FlexDirection::Row,
-                ..Default::default()
-            },
+        self.spawn(Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(50.0),
+            justify_content: JustifyContent::Center,
+            flex_direction: FlexDirection::Row,
             ..Default::default()
         })
         .with_children(|parent| {
@@ -453,8 +440,8 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
             for player_idx in players {
                 // Spawn a container for each player's join UI
                 parent
-                    .spawn(NodeBundle {
-                        style: Style {
+                    .spawn((
+                        Node {
                             width: Val::Percent(49.0),
                             max_height: Val::Percent(100.0),
                             min_height: Val::Percent(90.0),
@@ -469,49 +456,39 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
                             },
                             ..Default::default()
                         },
-                        background_color: Color::BLACK.with_alpha(0.6).into(),
-                        ..Default::default()
-                    })
+                        BackgroundColor(Color::BLACK.with_alpha(0.6)),
+                    ))
                     .with_children(|parent| {
                         // Left side of player join UI
                         parent
-                            .spawn(NodeBundle {
-                                style: Style {
-                                    width: Val::Percent(18.0),
-                                    height: Val::Percent(100.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
+                            .spawn(Node {
+                                width: Val::Percent(18.0),
+                                height: Val::Percent(100.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
                                 ..default()
                             })
                             .insert(CharacterSelectionLeft(player_idx));
 
                         // Center of player join UI
                         parent
-                            .spawn(NodeBundle {
-                                style: Style {
-                                    flex_direction: FlexDirection::Column,
-                                    width: Val::Percent(64.0),
-                                    height: Val::Percent(100.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
+                            .spawn(Node {
+                                flex_direction: FlexDirection::Column,
+                                width: Val::Percent(64.0),
+                                height: Val::Percent(100.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
                                 ..default()
                             })
                             .with_children(|parent| {
                                 // Center container for join button and readiness indicator
                                 parent
-                                    .spawn(NodeBundle {
-                                        style: Style {
-                                            width: Val::Percent(100.0),
-                                            height: Val::Percent(80.0),
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                            flex_direction: FlexDirection::Column,
-                                            ..default()
-                                        },
+                                    .spawn(Node {
+                                        width: Val::Percent(100.0),
+                                        height: Val::Percent(80.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        flex_direction: FlexDirection::Column,
                                         ..default()
                                     })
                                     .insert(CharacterSelectionCenter(player_idx))
@@ -531,12 +508,9 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
 
                                 // Readiness indicator for the player
                                 parent
-                                    .spawn(NodeBundle {
-                                        style: Style {
-                                            width: Val::Percent(100.0),
-                                            height: Val::Percent(20.0),
-                                            ..default()
-                                        },
+                                    .spawn(Node {
+                                        width: Val::Percent(100.0),
+                                        height: Val::Percent(20.0),
                                         ..default()
                                     })
                                     .insert(PlayerReadyNode {
@@ -547,14 +521,11 @@ impl UiPlayerJoinChildBuilderExt for ChildBuilder<'_> {
 
                         // Right side of player join UI
                         parent
-                            .spawn(NodeBundle {
-                                style: Style {
-                                    width: Val::Percent(18.0),
-                                    height: Val::Percent(100.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
+                            .spawn(Node {
+                                width: Val::Percent(18.0),
+                                height: Val::Percent(100.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
                                 ..default()
                             })
                             .insert(CharacterSelectionRight(player_idx));
@@ -578,20 +549,17 @@ fn setup_character_selection_system(
 
     // Main node containing all character selection UI
     commands
-        .spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                flex_direction: FlexDirection::Column,
-                padding: UiRect {
-                    left: Val::Vw(0.5),
-                    right: Val::Vw(0.5),
-                    top: Val::Vh(0.5),
-                    bottom: Val::Vh(0.5),
-                },
-                ..Default::default()
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            flex_direction: FlexDirection::Column,
+            padding: UiRect {
+                left: Val::Vw(0.5),
+                right: Val::Vw(0.5),
+                top: Val::Vh(0.5),
+                bottom: Val::Vh(0.5),
             },
             ..Default::default()
         })
@@ -629,12 +597,12 @@ fn setup_character_selection_system(
 fn player_join_system(
     button_mouse_movements: Query<(&ButtonActionComponent, &Interaction, Entity), With<Button>>,
     menu_explorer_query: Query<&ActionState<MenuAction>, With<MainMenuExplorer>>,
-    mut button_event_writer: EventWriter<ButtonActionEvent>,
+    mut button_event_writer: MessageWriter<ButtonActionEvent>,
     mut mouse_interaction: Local<Interaction>,
     game_params_res: Res<GameParametersResource>,
     mut players_resource: ResMut<PlayersResource>,
-    mut gamepad_events: EventReader<GamepadButtonChangedEvent>,
-    mut player_join_event: EventWriter<PlayerJoinEvent>,
+    mut gamepad_events: MessageReader<GamepadButtonChangedEvent>,
+    mut player_join_event: MessageWriter<PlayerJoinEvent>,
 ) {
     // Check if the join button was pressed
     if let Some(button) = button_mouse_movements.iter().find(|(button_action, _, _)| {
@@ -646,7 +614,7 @@ fn player_join_system(
         // Check if the maximum number of players have already joined
         if used_inputs.len() < game_params_res.get_max_players() as usize {
             // Detect if a player is joining through a keyboard button press
-            if let Some(player_input) = match menu_explorer_query.get_single() {
+            if let Some(player_input) = match menu_explorer_query.single() {
                 Err(_) => None,
                 Ok(action) => {
                     if action
@@ -672,17 +640,17 @@ fn player_join_system(
                 }));
 
                 // Send player join event and button action event
-                button_event_writer.send(ButtonActionEvent::from(
+                button_event_writer.write(ButtonActionEvent::from(
                     ButtonActionType::CharacterSelectJoin,
                 ));
-                player_join_event.send(PlayerJoinEvent {
+                player_join_event.write(PlayerJoinEvent {
                     player_idx: players_resource.player_data.len() as u8 - 1,
                     input: player_input,
                 });
             }
 
             // Detect if a player is joining through a gamepad button press
-            if let Some(player_input) = match menu_explorer_query.get_single() {
+            if let Some(player_input) = match menu_explorer_query.single() {
                 Err(_) => None,
                 Ok(action) => {
                     if let Some(gamepad_event) = gamepad_events.read().next() {
@@ -691,11 +659,11 @@ fn player_join_system(
                             .iter()
                             .any(|action| match action {
                                 MenuAction::JoinGamepad => !used_inputs
-                                    .contains(&PlayerInput::Gamepad(gamepad_event.gamepad.id)),
+                                    .contains(&PlayerInput::Gamepad(gamepad_event.entity)),
                                 _ => false,
                             })
                         {
-                            Some(PlayerInput::Gamepad(gamepad_event.gamepad.id))
+                            Some(PlayerInput::Gamepad(gamepad_event.entity))
                         } else {
                             None
                         }
@@ -711,10 +679,10 @@ fn player_join_system(
                 }));
 
                 // Send player join event and button action event
-                button_event_writer.send(ButtonActionEvent::from(
+                button_event_writer.write(ButtonActionEvent::from(
                     ButtonActionType::CharacterSelectJoin,
                 ));
-                player_join_event.send(PlayerJoinEvent {
+                player_join_event.write(PlayerJoinEvent {
                     player_idx: players_resource.player_data.len() as u8 - 1,
                     input: player_input,
                 });
@@ -743,10 +711,10 @@ fn player_join_system(
                 }));
 
                 // Send player join event and button action event
-                button_event_writer.send(ButtonActionEvent::from(
+                button_event_writer.write(ButtonActionEvent::from(
                     ButtonActionType::CharacterSelectJoin,
                 ));
-                player_join_event.send(PlayerJoinEvent {
+                player_join_event.write(PlayerJoinEvent {
                     player_idx: players_resource.player_data.len() as u8 - 1,
                     input: player_input,
                 });
@@ -766,7 +734,7 @@ fn player_join_system(
 /// arrow buttons, and ready button.
 fn update_ui_system(
     mut commands: Commands,
-    mut player_join_event: EventReader<PlayerJoinEvent>,
+    mut player_join_event: MessageReader<PlayerJoinEvent>,
     asset_server: Res<AssetServer>,
     character_selection_center: Query<(&CharacterSelectionCenter, Entity)>,
     character_selection_right: Query<(&CharacterSelectionRight, Entity)>,
@@ -795,93 +763,80 @@ fn update_ui_system(
 
             // Remove the join button from the previous character selection
             if let Some((_, entity)) = prev_character_selection_ui {
-                commands.entity(entity).remove_children(&[button_entity]);
+                commands.entity(entity).detach_child(button_entity);
 
                 // Spawn a character selection carousel
                 commands.entity(entity).with_children(|parent| {
                     parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                width: Val::Percent(75.0),
-                                height: Val::Percent(20.0),
-                                margin: UiRect::all(Val::Px(15.0)),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                flex_direction: FlexDirection::Row,
-                                ..default()
-                            },
+                        .spawn(Node {
+                            width: Val::Percent(75.0),
+                            height: Val::Percent(20.0),
+                            margin: UiRect::all(Val::Px(15.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            flex_direction: FlexDirection::Row,
                             ..default()
                         })
                         .insert(CharacterCarousel::new(*player_idx));
 
                     parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                width: Val::Percent(94.0),
-                                height: Val::Percent(80.0),
-                                flex_direction: FlexDirection::Column,
-                                padding: UiRect::all(Val::Px(3.0)),
-                                ..default()
-                            },
+                        .spawn(Node {
+                            width: Val::Percent(94.0),
+                            height: Val::Percent(80.0),
+                            flex_direction: FlexDirection::Column,
+                            padding: UiRect::all(Val::Px(3.0)),
                             ..default()
                         })
                         .insert(CharacterDescription(*player_idx))
                         .with_children(|parent| {
                             // Spawn character name text
                             parent
-                                .spawn(TextBundle {
-                                    text: Text::from_section(
-                                        "",
-                                        TextStyle {
-                                            font: font.clone(),
-                                            font_size: 20.0,
-                                            color: Color::Srgba(GOLD),
-                                        },
-                                    ),
-                                    style: Style {
+                                .spawn((
+                                    Text::new(""),
+                                    TextFont {
+                                        font: font.clone().into(),
+                                        font_size: 20.0.into(),
+                                        ..Default::default()
+                                    },
+                                    TextColor(Color::Srgba(GOLD)),
+                                    TextLayout {
+                                        justify: Justify::Center,
+                                        ..Default::default()
+                                    },
+                                    Node {
                                         width: Val::Percent(100.0),
                                         height: Val::Percent(10.0),
                                         ..default()
                                     },
-                                    ..default()
-                                })
+                                ))
                                 .insert(CharacterName);
 
                             // Spawn container for character info
                             parent
-                                .spawn(NodeBundle {
-                                    style: Style {
-                                        width: Val::Percent(100.0),
-                                        height: Val::Percent(90.0),
-                                        flex_direction: FlexDirection::Row,
-                                        ..default()
-                                    },
+                                .spawn(Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Percent(90.0),
+                                    flex_direction: FlexDirection::Row,
                                     ..default()
                                 })
                                 .insert(CharacterInfo)
                                 .with_children(|parent| {
                                     // Spawn container for ability descriptions
                                     parent
-                                        .spawn(NodeBundle {
-                                            style: Style {
-                                                height: Val::Percent(100.0),
-                                                width: Val::Percent(75.0),
-                                                flex_direction: FlexDirection::Column,
-                                                ..default()
-                                            },
+                                        .spawn(Node {
+                                            height: Val::Percent(100.0),
+                                            width: Val::Percent(75.0),
+                                            flex_direction: FlexDirection::Column,
                                             ..default()
                                         })
                                         .insert(CharacterAbilityDescriptions);
 
                                     // Spawn container for stat descriptions
                                     parent
-                                        .spawn(NodeBundle {
-                                            style: Style {
-                                                height: Val::Percent(100.0),
-                                                width: Val::Percent(25.0),
-                                                flex_direction: FlexDirection::Column,
-                                                ..default()
-                                            },
+                                        .spawn(Node {
+                                            height: Val::Percent(100.0),
+                                            width: Val::Percent(25.0),
+                                            flex_direction: FlexDirection::Column,
                                             ..default()
                                         })
                                         .insert(CharacterStatsDescriptions);
@@ -896,7 +851,7 @@ fn update_ui_system(
             } else {
                 // If entity was not found for new character selection, despawn the button
                 // This means all of the available player slots have been used up
-                commands.entity(button_entity).despawn_recursive();
+                commands.entity(button_entity).despawn();
             }
 
             // Spawn right and left arrow buttons for the previous character selection
@@ -952,15 +907,14 @@ fn update_ui_system(
             // Spawn a menu explorer with the new player index
             let mut input_map = inputs_res.menu.clone();
 
-            if let PlayerInput::Gamepad(id) = *input {
-                input_map.set_gamepad(Gamepad { id });
+            if let PlayerInput::Gamepad(gamepad_entity) = *input {
+                input_map.set_gamepad(gamepad_entity);
             }
 
+            // Bevy 0.20 port: `InputManagerBundle` was removed; `InputMap`
+            // provides its `ActionState` via required components.
             commands
-                .spawn(InputManagerBundle::<MenuAction> {
-                    action_state: ActionState::default(),
-                    input_map,
-                })
+                .spawn(input_map)
                 .insert(MenuExplorer(*player_idx))
                 .insert(CharacterSelectionCleanup);
         }
@@ -974,7 +928,7 @@ fn update_ui_system(
 /// It tracks the interaction states and sends events when relevant buttons are released.
 fn mouse_click_input_system(
     button_mouse_movements: Query<(&ButtonActionComponent, &Interaction), With<Button>>,
-    mut button_event_writer: EventWriter<ButtonActionEvent>,
+    mut button_event_writer: MessageWriter<ButtonActionEvent>,
     mut stored_right_mouse_interaction: Local<[Interaction; 4]>,
     mut stored_left_mouse_interaction: Local<[Interaction; 4]>,
     mut stored_player_ready_interaction: Local<[Interaction; 4]>,
@@ -1029,7 +983,7 @@ fn mouse_click_input_system(
 
             // Send event if the button was released
             if button_released {
-                button_event_writer.send(ButtonActionEvent::from(button_action.action));
+                button_event_writer.write(ButtonActionEvent::from(button_action.action));
             }
         }
     }
@@ -1040,7 +994,7 @@ fn mouse_click_input_system(
 /// This function processes the input actions from gamepads and keyboards,
 /// and sends the appropriate button action events based on the player's interactions.
 fn keyboard_and_gamepad_input_system(
-    mut button_event_writer: EventWriter<ButtonActionEvent>,
+    mut button_event_writer: MessageWriter<ButtonActionEvent>,
     menu_input_query: Query<(&ActionState<MenuAction>, &MenuExplorer)>,
     players_resource: Res<PlayersResource>,
 ) {
@@ -1067,17 +1021,17 @@ fn keyboard_and_gamepad_input_system(
                 // Match and send the appropriate event for gamepad actions
                 match action {
                     MenuAction::PlayerReadyGamepad => {
-                        button_event_writer.send(ButtonActionEvent::from(
+                        button_event_writer.write(ButtonActionEvent::from(
                             ButtonActionType::CharacterSelectReady(*player_idx),
                         ));
                     }
                     MenuAction::NavigateLeftGamepad => {
-                        button_event_writer.send(ButtonActionEvent::from(
+                        button_event_writer.write(ButtonActionEvent::from(
                             ButtonActionType::CharacterSelectLeft(*player_idx),
                         ));
                     }
                     MenuAction::NavigateRightGamepad => {
-                        button_event_writer.send(ButtonActionEvent::from(
+                        button_event_writer.write(ButtonActionEvent::from(
                             ButtonActionType::CharacterSelectRight(*player_idx),
                         ));
                     }
@@ -1087,17 +1041,17 @@ fn keyboard_and_gamepad_input_system(
                 // Match and send the appropriate event for keyboard actions
                 match action {
                     MenuAction::PlayerReadyKeyboard => {
-                        button_event_writer.send(ButtonActionEvent::from(
+                        button_event_writer.write(ButtonActionEvent::from(
                             ButtonActionType::CharacterSelectReady(*player_idx),
                         ));
                     }
                     MenuAction::NavigateLeftKeyboard => {
-                        button_event_writer.send(ButtonActionEvent::from(
+                        button_event_writer.write(ButtonActionEvent::from(
                             ButtonActionType::CharacterSelectLeft(*player_idx),
                         ));
                     }
                     MenuAction::NavigateRightKeyboard => {
-                        button_event_writer.send(ButtonActionEvent::from(
+                        button_event_writer.write(ButtonActionEvent::from(
                             ButtonActionType::CharacterSelectRight(*player_idx),
                         ));
                     }
@@ -1138,10 +1092,13 @@ fn init_carousel_ui_system(
             // Spawn initial characters as children of the carousel
             commands.entity(carousel_entity).with_children(|parent| {
                 parent
-                    .spawn(ImageBundle {
-                        image: UiImage::new(player_assets.get_asset(&visible_characters[0]))
-                            .with_color(Color::srgba(0.60, 0.60, 0.60, 0.60)),
-                        style: Style {
+                    .spawn((
+                        ImageNode {
+                            image: player_assets.get_asset(&visible_characters[0]),
+                            color: Color::srgba(0.60, 0.60, 0.60, 0.60),
+                            ..default()
+                        },
+                        Node {
                             height: Val::Percent(80.0),
                             margin: UiRect {
                                 left: Val::Vw(0.5),
@@ -1150,14 +1107,16 @@ fn init_carousel_ui_system(
                             },
                             ..default()
                         },
-                        ..default()
-                    })
+                    ))
                     .insert(CharacterCarouselSlot(0));
 
                 parent
-                    .spawn(ImageBundle {
-                        image: player_assets.get_asset(&visible_characters[1]).into(),
-                        style: Style {
+                    .spawn((
+                        ImageNode {
+                            image: player_assets.get_asset(&visible_characters[1]),
+                            ..default()
+                        },
+                        Node {
                             height: Val::Percent(100.0),
                             margin: UiRect {
                                 left: Val::Vw(0.5),
@@ -1166,15 +1125,17 @@ fn init_carousel_ui_system(
                             },
                             ..default()
                         },
-                        ..default()
-                    })
+                    ))
                     .insert(CharacterCarouselSlot(1));
 
                 parent
-                    .spawn(ImageBundle {
-                        image: UiImage::new(player_assets.get_asset(&visible_characters[2]))
-                            .with_color(Color::srgba(0.60, 0.60, 0.60, 0.60)),
-                        style: Style {
+                    .spawn((
+                        ImageNode {
+                            image: player_assets.get_asset(&visible_characters[2]),
+                            color: Color::srgba(0.60, 0.60, 0.60, 0.60),
+                            ..default()
+                        },
+                        Node {
                             height: Val::Percent(80.0),
                             margin: UiRect {
                                 left: Val::Vw(0.5),
@@ -1183,8 +1144,7 @@ fn init_carousel_ui_system(
                             },
                             ..default()
                         },
-                        ..default()
-                    })
+                    ))
                     .insert(CharacterCarouselSlot(2));
             });
 
@@ -1206,9 +1166,7 @@ fn init_carousel_ui_system(
                         if let Ok(mut character_name_text) =
                             character_names.get_mut(*char_desc_child)
                         {
-                            character_name_text.sections[0]
-                                .value
-                                .clone_from(&character.name);
+                            character_name_text.0 = character.name.clone();
                         }
 
                         // Update character abilities and stats
@@ -1266,9 +1224,9 @@ fn carousel_ui_system(
     character_info: Query<&Children, With<CharacterInfo>>,
     character_abilities: Query<Entity, With<CharacterAbilityDescriptions>>,
     character_stats: Query<Entity, With<CharacterStatsDescriptions>>,
-    mut carousel_slots: Query<(&mut UiImage, &CharacterCarouselSlot)>,
+    mut carousel_slots: Query<(&mut ImageNode, &CharacterCarouselSlot)>,
     player_assets: Res<PlayerAssets>,
-    mut button_reader: EventReader<ButtonActionEvent>,
+    mut button_reader: MessageReader<ButtonActionEvent>,
     mut players_res: ResMut<PlayersResource>,
     characters_res: Res<CharactersResource>,
     abilities_desc_res: Res<AbilityDescriptionsResource>,
@@ -1341,9 +1299,7 @@ fn carousel_ui_system(
                                     character_names.get_mut(*char_desc_child)
                                 {
                                     // Replace the character name with the name of the new middle character
-                                    character_name_text.sections[0]
-                                        .value
-                                        .clone_from(&character.name);
+                                    character_name_text.0 = character.name.clone();
                                 } else if let Ok(char_info_children) =
                                     character_info.get(*char_desc_child)
                                 {
@@ -1355,7 +1311,7 @@ fn carousel_ui_system(
                                             // Despawn the existing ability descriptions
                                             commands
                                                 .entity(char_abilities_entity)
-                                                .despawn_descendants();
+                                                .despawn_children();
 
                                             // Spawn ability descriptions as children
                                             commands.entity(char_abilities_entity).with_children(
@@ -1372,9 +1328,7 @@ fn carousel_ui_system(
                                             character_stats.get(*char_info_child)
                                         {
                                             // Despawn all of the existing stats
-                                            commands
-                                                .entity(char_stats_entity)
-                                                .despawn_descendants();
+                                            commands.entity(char_stats_entity).despawn_children();
 
                                             // Spawn character stats as children
                                             commands.entity(char_stats_entity).with_children(
@@ -1408,10 +1362,10 @@ fn carousel_ui_system(
 /// This function listens for player ready events and updates the player ready state and the color
 /// of the ready button to indicate the player is ready.
 fn player_ready_system(
-    mut button_reader: EventReader<ButtonActionEvent>,
+    mut button_reader: MessageReader<ButtonActionEvent>,
     mut player_ready: Query<(&mut PlayerReadyNode, &Children)>,
     ready_button_parents: Query<&Children>,
-    mut ready_button_images: Query<&mut UiImage>,
+    mut ready_button_images: Query<&mut ImageNode>,
 ) {
     // Iterate over each button action event
     for event in button_reader.read() {

@@ -7,14 +7,14 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
+        hierarchy::ChildSpawnerCommands,
         query::With,
         system::{Commands, Query, Res},
     },
-    hierarchy::{BuildChildren, ChildBuilder, DespawnRecursiveExt},
-    text::{Font, JustifyText, Text, TextStyle},
+    text::{Font, Justify, TextColor, TextFont, TextLayout},
     ui::{
-        node_bundles::{NodeBundle, TextBundle},
-        AlignItems, FlexDirection, FlexWrap, JustifyContent, Style, UiRect, Val,
+        widget::Text, AlignItems, BackgroundColor, FlexDirection, FlexWrap, JustifyContent, Node,
+        UiRect, Val,
     },
     utils::default,
 };
@@ -45,55 +45,48 @@ pub(super) struct PhaseNameUi;
 #[derive(Component)]
 pub(super) struct PhaseDataUi;
 
-impl PhaseUiChildBuilderExt for ChildBuilder<'_> {
+impl PhaseUiChildBuilderExt for ChildSpawnerCommands<'_> {
     // Phase name UI
     fn spawn_phase_ui(&mut self, font: Handle<Font>) {
-        self.spawn(NodeBundle {
-            style: Style {
-                width: NODE_WIDTH,
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
+        self.spawn(Node {
+            width: NODE_WIDTH,
+            height: Val::Percent(100.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
             ..default()
         })
         .with_children(|left| {
-            left.spawn(TextBundle {
-                style: Style::default(),
-                text: Text::from_section(
-                    "",
-                    TextStyle {
-                        font,
-                        font_size: FONT_SIZE,
-                        color: Color::Srgba(NORMAL_TEXT_COLOR),
-                    },
-                ),
-                ..default()
-            })
+            left.spawn((
+                Text::new(""),
+                TextFont {
+                    font: font.into(),
+                    font_size: FONT_SIZE.into(),
+                    ..Default::default()
+                },
+                TextColor(Color::Srgba(NORMAL_TEXT_COLOR)),
+                TextLayout {
+                    justify: Justify::Center,
+                    ..Default::default()
+                },
+                Node::default(),
+            ))
             .insert(PhaseNameUi);
         });
 
         // Phase data ui
-        self.spawn(NodeBundle {
-            style: Style {
-                width: NODE_WIDTH,
-                height: Val::Percent(100.0),
-                ..default()
-            },
+        self.spawn(Node {
+            width: NODE_WIDTH,
+            height: Val::Percent(100.0),
             ..default()
         })
         .with_children(|right| {
             right
-                .spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        padding: PHASE_DATA_PADDING,
-                        align_items: AlignItems::Center,
-                        justify_content: JustifyContent::Center,
-                        ..default()
-                    },
+                .spawn(Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    padding: PHASE_DATA_PADDING,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
                     ..default()
                 })
                 .insert(PhaseDataUi);
@@ -111,80 +104,86 @@ pub(super) fn update_phase_ui_system(
 ) {
     if let Some(current_level) = &run_resource.current_level {
         if let Some(current_phase) = &current_level.current_phase {
-            if let Ok(mut text) = phase_name_ui_query.get_single_mut() {
-                text.sections[0].value = current_phase.phase_type.get_name()
+            if let Ok(mut text) = phase_name_ui_query.single_mut() {
+                text.0 = current_phase.phase_type.get_name().to_string()
             }
 
-            if let Ok(entity) = phase_data_ui_query.get_single() {
-                commands.entity(entity).despawn_descendants();
+            if let Ok(entity) = phase_data_ui_query.single() {
+                commands.entity(entity).despawn_children();
 
                 match &current_phase.phase_type {
                     LevelPhaseType::FormationSpawn { phase_timer, .. } => {
                         let font = ui_assets.lunchds_font.clone();
 
                         commands.entity(entity).with_children(|phase_data_ui| {
-                            phase_data_ui.spawn(TextBundle {
-                                style: Style::default(),
-                                text: Text::from_section(
-                                    format!("{:.0}", phase_timer.remaining_secs()),
-                                    TextStyle {
-                                        font,
-                                        font_size: FONT_SIZE,
-                                        color: Color::Srgba(NORMAL_TEXT_COLOR),
-                                    },
-                                ),
-                                ..default()
-                            });
+                            phase_data_ui.spawn((
+                                Text::new(format!("{:.0}", phase_timer.remaining_secs())),
+                                TextFont {
+                                    font: font.into(),
+                                    font_size: FONT_SIZE.into(),
+                                    ..Default::default()
+                                },
+                                TextColor(Color::Srgba(NORMAL_TEXT_COLOR)),
+                                TextLayout {
+                                    justify: Justify::Center,
+                                    ..Default::default()
+                                },
+                                Node::default(),
+                            ));
                         });
                     }
                     LevelPhaseType::Break { phase_timer, .. } => {
                         let font = ui_assets.lunchds_font.clone();
 
                         commands.entity(entity).with_children(|phase_data_ui| {
-                            phase_data_ui.spawn(TextBundle {
-                                style: Style::default(),
-                                text: Text::from_section(
-                                    format!("{:.0}", phase_timer.remaining_secs()),
-                                    TextStyle {
-                                        font,
-                                        font_size: FONT_SIZE,
-                                        color: Color::Srgba(NORMAL_TEXT_COLOR),
-                                    },
-                                ),
-                                ..default()
-                            });
+                            phase_data_ui.spawn((
+                                Text::new(format!("{:.0}", phase_timer.remaining_secs())),
+                                TextFont {
+                                    font: font.into(),
+                                    font_size: FONT_SIZE.into(),
+                                    ..Default::default()
+                                },
+                                TextColor(Color::Srgba(NORMAL_TEXT_COLOR)),
+                                TextLayout {
+                                    justify: Justify::Center,
+                                    ..Default::default()
+                                },
+                                Node::default(),
+                            ));
                         });
                     }
                     LevelPhaseType::Boss { .. } => {
-                        if let Ok(health) = boss_mobs_query.get_single() {
+                        if let Ok(health) = boss_mobs_query.single() {
                             commands.entity(entity).with_children(|phase_data_ui| {
                                 phase_data_ui
-                                    .spawn(NodeBundle {
-                                        style: Style {
+                                    .spawn((
+                                        Node {
                                             width: BOSS_HEALTH_WIDTH,
                                             height: BOSS_HEALTH_HEIGHT,
                                             flex_direction: FlexDirection::Row,
                                             ..default()
                                         },
-                                        background_color: BOSS_HEALTH_COLOR
-                                            .with_alpha(BOSS_HEALTH_EMPTY_ALPHA)
-                                            .into(),
-                                        ..default()
-                                    })
+                                        BackgroundColor(
+                                            BOSS_HEALTH_COLOR
+                                                .with_alpha(BOSS_HEALTH_EMPTY_ALPHA)
+                                                .into(),
+                                        ),
+                                    ))
                                     .with_children(|boss_health_ui| {
-                                        boss_health_ui.spawn(NodeBundle {
-                                            style: Style {
+                                        boss_health_ui.spawn((
+                                            Node {
                                                 width: Val::Percent(
                                                     100.0 * health.get_health_percentage(),
                                                 ),
                                                 height: Val::Percent(100.0),
                                                 ..default()
                                             },
-                                            background_color: BOSS_HEALTH_COLOR
-                                                .with_alpha(BOSS_HEALTH_FILLED_ALPHA)
-                                                .into(),
-                                            ..default()
-                                        });
+                                            BackgroundColor(
+                                                BOSS_HEALTH_COLOR
+                                                    .with_alpha(BOSS_HEALTH_FILLED_ALPHA)
+                                                    .into(),
+                                            ),
+                                        ));
                                     });
                             });
                         }
@@ -196,14 +195,11 @@ pub(super) fn update_phase_ui_system(
 
                         commands.entity(entity).with_children(|phase_data_ui| {
                             phase_data_ui
-                                .spawn(NodeBundle {
-                                    style: Style {
-                                        width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
-                                        flex_direction: FlexDirection::Column,
-                                        flex_wrap: FlexWrap::Wrap,
-                                        ..default()
-                                    },
+                                .spawn(Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Percent(100.0),
+                                    flex_direction: FlexDirection::Column,
+                                    flex_wrap: FlexWrap::Wrap,
                                     ..default()
                                 })
                                 .with_children(|phase_data_list_ui| match tutorial_lesson {
@@ -211,84 +207,81 @@ pub(super) fn update_phase_ui_system(
                                         for (progress_str, completed) in
                                             tutorial_lesson.get_movement_timer_strs().iter()
                                         {
-                                            phase_data_list_ui.spawn(TextBundle {
-                                                style: Style {
+                                            phase_data_list_ui.spawn((
+                                                Text::new(progress_str),
+                                                TextFont {
+                                                    font: font.clone().into(),
+                                                    font_size: TUTORIAL_FONT_SIZE.into(),
+                                                    ..Default::default()
+                                                },
+                                                TextColor(if *completed {
+                                                    Color::Srgba(TUTORIAL_COMPLETED_TEXT_COLOR)
+                                                } else {
+                                                    Color::Srgba(NORMAL_TEXT_COLOR)
+                                                }),
+                                                TextLayout {
+                                                    justify: Justify::Center,
+                                                    ..Default::default()
+                                                },
+                                                Node {
                                                     height: TUTORIAL_TEXT_SECTION_HEIGHT,
                                                     ..default()
                                                 },
-                                                text: Text::from_section(
-                                                    progress_str,
-                                                    TextStyle {
-                                                        font: font.clone(),
-                                                        font_size: TUTORIAL_FONT_SIZE,
-                                                        color: if *completed {
-                                                            Color::Srgba(
-                                                                TUTORIAL_COMPLETED_TEXT_COLOR,
-                                                            )
-                                                        } else {
-                                                            Color::Srgba(NORMAL_TEXT_COLOR)
-                                                        },
-                                                    },
-                                                )
-                                                .with_justify(JustifyText::Left),
-                                                ..default()
-                                            });
+                                            ));
                                         }
                                     }
                                     TutorialLesson::AbilitySlotOne { .. } => {
                                         for (progress_str, completed) in
                                             tutorial_lesson.get_attack_strs().iter()
                                         {
-                                            phase_data_list_ui.spawn(TextBundle {
-                                                style: Style {
+                                            phase_data_list_ui.spawn((
+                                                Text::new(progress_str),
+                                                TextFont {
+                                                    font: font.clone().into(),
+                                                    font_size: TUTORIAL_FONT_SIZE.into(),
+                                                    ..Default::default()
+                                                },
+                                                TextColor(if *completed {
+                                                    Color::Srgba(TUTORIAL_COMPLETED_TEXT_COLOR)
+                                                } else {
+                                                    Color::Srgba(NORMAL_TEXT_COLOR)
+                                                }),
+                                                TextLayout {
+                                                    justify: Justify::Center,
+                                                    ..Default::default()
+                                                },
+                                                Node {
                                                     height: TUTORIAL_TEXT_SECTION_HEIGHT,
                                                     ..default()
                                                 },
-                                                text: Text::from_section(
-                                                    progress_str,
-                                                    TextStyle {
-                                                        font: font.clone(),
-                                                        font_size: TUTORIAL_FONT_SIZE,
-                                                        color: if *completed {
-                                                            Color::Srgba(
-                                                                TUTORIAL_COMPLETED_TEXT_COLOR,
-                                                            )
-                                                        } else {
-                                                            Color::Srgba(NORMAL_TEXT_COLOR)
-                                                        },
-                                                    },
-                                                )
-                                                .with_justify(JustifyText::Left),
-                                                ..default()
-                                            });
+                                            ));
                                         }
                                     }
                                     TutorialLesson::AbilitySlotTwo { .. } => {
                                         for (progress_str, completed) in
                                             tutorial_lesson.get_ability_strs().iter()
                                         {
-                                            phase_data_list_ui.spawn(TextBundle {
-                                                style: Style {
+                                            phase_data_list_ui.spawn((
+                                                Text::new(progress_str),
+                                                TextFont {
+                                                    font: font.clone().into(),
+                                                    font_size: TUTORIAL_FONT_SIZE.into(),
+                                                    ..Default::default()
+                                                },
+                                                TextColor(if *completed {
+                                                    Color::Srgba(TUTORIAL_COMPLETED_TEXT_COLOR)
+                                                } else {
+                                                    Color::Srgba(NORMAL_TEXT_COLOR)
+                                                }),
+                                                TextLayout {
+                                                    justify: Justify::Center,
+                                                    ..Default::default()
+                                                },
+                                                Node {
                                                     height: TUTORIAL_TEXT_SECTION_HEIGHT,
                                                     ..default()
                                                 },
-                                                text: Text::from_section(
-                                                    progress_str,
-                                                    TextStyle {
-                                                        font: font.clone(),
-                                                        font_size: TUTORIAL_FONT_SIZE,
-                                                        color: if *completed {
-                                                            Color::Srgba(
-                                                                TUTORIAL_COMPLETED_TEXT_COLOR,
-                                                            )
-                                                        } else {
-                                                            Color::Srgba(NORMAL_TEXT_COLOR)
-                                                        },
-                                                    },
-                                                )
-                                                .with_justify(JustifyText::Left),
-                                                ..default()
-                                            });
+                                            ));
                                         }
                                     }
                                 });

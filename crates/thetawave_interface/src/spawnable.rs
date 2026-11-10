@@ -1,6 +1,6 @@
 use std::default::Default;
 
-use bevy_ecs::{entity::Entity, event::Event};
+use bevy_ecs::{entity::Entity, message::Message};
 use bevy_ecs_macros::Component;
 use bevy_math::{Quat, Vec2};
 use serde::Deserialize;
@@ -51,8 +51,8 @@ pub enum ProjectileType {
 impl ProjectileType {
     pub fn get_faction(&self) -> Faction {
         match self {
-            ProjectileType::Blast(faction) => faction.clone(),
-            ProjectileType::Bullet(faction) => faction.clone(),
+            ProjectileType::Blast(faction) => *faction,
+            ProjectileType::Bullet(faction) => *faction,
         }
     }
 }
@@ -218,21 +218,21 @@ pub enum TextEffectType {
 
 /// Sends information about destroyed mobs
 /// Includes information that is lost when the entity is destroyed
-#[derive(Event)]
+#[derive(Message)]
 pub struct MobDestroyedEvent {
     pub mob_type: MobType,
     pub entity: Entity,
     pub is_boss: bool,
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct MobSegmentDestroyedEvent {
     pub mob_segment_type: MobSegmentType,
     pub entity: Entity,
 }
 
 /// Event for spawning mobs
-#[derive(Event)]
+#[derive(Message)]
 pub struct SpawnMobEvent {
     /// Type of mob to spawn
     pub mob_type: MobType,
@@ -249,7 +249,7 @@ pub struct ItemComponent {
     pub item_type: ItemType,
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct SpawnItemEvent {
     pub item_type: ItemType,
     pub position: Vec2,

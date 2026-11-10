@@ -6,7 +6,7 @@ use super::{
     SpawnableBehavior, SpawnableComponent,
 };
 use bevy::{
-    prelude::{Entity, Event, EventReader, EventWriter, Query, Res, Resource},
+    prelude::{Entity, Message, MessageReader, MessageWriter, Query, Res, Resource},
     time::{Time, Timer, TimerMode},
 };
 use bevy_rapier2d::prelude::ImpulseJoint;
@@ -41,7 +41,7 @@ pub enum MobBehaviorSequenceType {
 pub fn mob_behavior_sequence_tracker_system(
     behavior_sequence_resource: Res<BehaviorSequenceResource>,
     time: Res<Time>,
-    mut behavior_update_event_writer: EventWriter<MobBehaviorUpdateEvent>,
+    mut behavior_update_event_writer: MessageWriter<MobBehaviorUpdateEvent>,
     mut mob_query: Query<(Entity, &mut MobComponent)>,
 ) {
     for (entity, mut mob_component) in mob_query.iter_mut() {
@@ -73,7 +73,7 @@ pub fn mob_behavior_sequence_tracker_system(
                     behavior_sequence_tracker.timer.reset();
 
                     // update behaviors
-                    behavior_update_event_writer.send(MobBehaviorUpdateEvent {
+                    behavior_update_event_writer.write(MobBehaviorUpdateEvent {
                         mob_behaviors: behavior_sequence.behaviors[behavior_sequence_tracker.index]
                             .mob_behaviors
                             .clone(),
@@ -98,7 +98,7 @@ pub fn mob_behavior_sequence_tracker_system(
                     index: 0,
                 });
 
-                behavior_update_event_writer.send(MobBehaviorUpdateEvent {
+                behavior_update_event_writer.write(MobBehaviorUpdateEvent {
                     mob_behaviors: behavior_sequence.behaviors[0].mob_behaviors.clone(),
                     control_behaviors: behavior_sequence.behaviors[0].control_behaviors.clone(),
                     spawnable_behaviors: behavior_sequence.behaviors[0].spawnable_behaviors.clone(),
@@ -109,7 +109,7 @@ pub fn mob_behavior_sequence_tracker_system(
     }
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct MobBehaviorUpdateEvent {
     pub mob_behaviors: Vec<MobBehavior>,
     pub control_behaviors: Vec<MobSegmentControlBehavior>,
@@ -118,7 +118,7 @@ pub struct MobBehaviorUpdateEvent {
 }
 
 pub fn mob_behavior_sequence_update_system(
-    mut behavior_update_event_reader: EventReader<MobBehaviorUpdateEvent>,
+    mut behavior_update_event_reader: MessageReader<MobBehaviorUpdateEvent>,
     mut mob_query: Query<(Entity, &mut MobComponent, &mut SpawnableComponent)>,
     mut mob_segment_query: Query<(Entity, &mut MobSegmentComponent, &ImpulseJoint)>,
 ) {
@@ -147,11 +147,7 @@ pub fn mob_behavior_sequence_update_system(
 
                     for pair in entity_pairs.iter_mut() {
                         // add entities to mob segment entities if they are the mob, or their parent is in the vector aleady
-                        if pair.parent == entity
-                            || mob_segment_entities
-                                .iter()
-                                .any(|mob_segment_entity| *mob_segment_entity == pair.parent)
-                        {
+                        if pair.parent == entity || mob_segment_entities.contains(&pair.parent) {
                             mob_segment_entities.push(pair.entity);
                             remove_entities.push(pair.entity);
                         }
@@ -161,21 +157,15 @@ pub fn mob_behavior_sequence_update_system(
                         break;
                     }
 
-                    entity_pairs.retain(|entity_pair| {
-                        !remove_entities
-                            .iter()
-                            .any(|remove_entity| *remove_entity == entity_pair.entity)
-                    });
+                    entity_pairs
+                        .retain(|entity_pair| !remove_entities.contains(&entity_pair.entity));
                 }
 
                 // add mob segment behaviors to mob segment from mob component based on mob joint behaviors
                 for (mob_segment_entity, mut mob_segment_component, _) in
                     mob_segment_query.iter_mut()
                 {
-                    if mob_segment_entities
-                        .iter()
-                        .any(|check_entity| *check_entity == mob_segment_entity)
-                    {
+                    if mob_segment_entities.contains(&mob_segment_entity) {
                         mob_segment_component.behaviors = vec![];
                         for control_behavior in event.control_behaviors.iter() {
                             if let Some(mob_segment_behaviors_map) =

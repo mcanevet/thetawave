@@ -4,8 +4,8 @@
 use bevy::app::{App, Plugin, Update};
 use bevy::log::info;
 use bevy::prelude::{
-    in_state, EventReader, EventWriter, IntoSystemConfigs, NextState, OnEnter, OnExit, Query, Res,
-    ResMut, Resource, With,
+    in_state, IntoScheduleConfigs, MessageReader, MessageWriter, NextState, OnEnter, OnExit, Query,
+    Res, ResMut, Resource, With,
 };
 use bevy::time::Time;
 use leafwing_input_manager::prelude::ActionState;
@@ -59,9 +59,9 @@ impl Plugin for RunPlugin {
         )
         .insert_resource(CurrentRunProgressResource::default());
 
-        app.add_event::<SpawnFormationEvent>()
-            .add_event::<RunEndEvent>()
-            .add_event::<CyclePhaseEvent>();
+        app.add_message::<SpawnFormationEvent>()
+            .add_message::<RunEndEvent>()
+            .add_message::<CyclePhaseEvent>();
 
         app.add_systems(OnEnter(AppStates::InitializeRun), init_run_system);
 
@@ -95,23 +95,13 @@ pub(super) struct PremadeRunsResource {
 
 /// The most up to date information on how close the player is to winning. This also keeps the
 /// state required to transition to new sections of the level.
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 pub struct CurrentRunProgressResource {
     /// List of string level keys that are matched to values in the levelsresource
     pub queued_levels: VecDeque<Level>,
     pub completed_levels: VecDeque<Level>,
     /// Tracks the level currently being played
     pub current_level: Option<Level>,
-}
-
-impl Default for CurrentRunProgressResource {
-    fn default() -> Self {
-        CurrentRunProgressResource {
-            queued_levels: VecDeque::new(),
-            completed_levels: VecDeque::new(),
-            current_level: None,
-        }
-    }
 }
 
 impl CurrentRunProgressResource {
@@ -152,8 +142,8 @@ impl CurrentRunProgressResource {
 
     fn init_current_level(
         &mut self,
-        change_bg_music_event_writer: &mut EventWriter<ChangeBackgroundMusicEvent>,
-        cycle_phase_event_writer: &mut EventWriter<CyclePhaseEvent>,
+        change_bg_music_event_writer: &mut MessageWriter<ChangeBackgroundMusicEvent>,
+        cycle_phase_event_writer: &mut MessageWriter<CyclePhaseEvent>,
     ) {
         if let Some(current_level) = &mut self.current_level {
             let level_completed = current_level.cycle_phase(cycle_phase_event_writer);
@@ -170,17 +160,17 @@ impl CurrentRunProgressResource {
         &mut self,
         time: &Time,
         player_query: &Query<&ActionState<PlayerAction>, With<PlayerComponent>>,
-        spawn_formation_event_writer: &mut EventWriter<SpawnFormationEvent>,
+        spawn_formation_event_writer: &mut MessageWriter<SpawnFormationEvent>,
         formations_res: &FormationPoolsResource,
-        spawn_mob_event_writer: &mut EventWriter<SpawnMobEvent>,
-        bosses_destroyed_event_reader: &mut EventReader<BossesDestroyedEvent>,
-        run_end_event_writer: &mut EventWriter<RunEndEvent>,
-        change_bg_music_event_writer: &mut EventWriter<ChangeBackgroundMusicEvent>,
-        cycle_phase_event_writer: &mut EventWriter<CyclePhaseEvent>,
-        mob_destroyed_event: &mut EventReader<MobDestroyedEvent>,
-        mob_reached_bottom_event: &mut EventReader<MobReachedBottomGateEvent>,
-        mob_segment_destroyed_event: &mut EventReader<MobSegmentDestroyedEvent>,
-        play_sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+        spawn_mob_event_writer: &mut MessageWriter<SpawnMobEvent>,
+        bosses_destroyed_event_reader: &mut MessageReader<BossesDestroyedEvent>,
+        run_end_event_writer: &mut MessageWriter<RunEndEvent>,
+        change_bg_music_event_writer: &mut MessageWriter<ChangeBackgroundMusicEvent>,
+        cycle_phase_event_writer: &mut MessageWriter<CyclePhaseEvent>,
+        mob_destroyed_event: &mut MessageReader<MobDestroyedEvent>,
+        mob_reached_bottom_event: &mut MessageReader<MobReachedBottomGateEvent>,
+        mob_segment_destroyed_event: &mut MessageReader<MobSegmentDestroyedEvent>,
+        play_sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
         player_spawn_params: ResMut<InputRestrictionsAtSpawn>,
     ) {
         if let Some(current_level) = &mut self.current_level {
@@ -204,7 +194,7 @@ impl CurrentRunProgressResource {
                 self.init_current_level(change_bg_music_event_writer, cycle_phase_event_writer);
             }
         } else {
-            run_end_event_writer.send(RunEndEvent {
+            run_end_event_writer.write(RunEndEvent {
                 outcome: RunOutcomeType::Victory,
             });
         }
@@ -216,8 +206,8 @@ fn init_run_system(
     premade_runs_res: Res<PremadeRunsResource>,
     premade_levels_res: Res<PremadeLevelsResource>,
     mut next_app_state: ResMut<NextState<AppStates>>,
-    mut change_bg_music_event_writer: EventWriter<ChangeBackgroundMusicEvent>,
-    mut cycle_phase_event_writer: EventWriter<CyclePhaseEvent>,
+    mut change_bg_music_event_writer: MessageWriter<ChangeBackgroundMusicEvent>,
+    mut cycle_phase_event_writer: MessageWriter<CyclePhaseEvent>,
 ) {
     // generate the run
     run_res.generate_premade(
@@ -246,17 +236,17 @@ fn tick_run_system(
     mut run_res: ResMut<CurrentRunProgressResource>,
     time: Res<Time>,
     player_query: Query<&ActionState<PlayerAction>, With<PlayerComponent>>,
-    mut spawn_formation_event_writer: EventWriter<SpawnFormationEvent>,
+    mut spawn_formation_event_writer: MessageWriter<SpawnFormationEvent>,
     formations_res: Res<FormationPoolsResource>,
-    mut spawn_mob_event_writer: EventWriter<SpawnMobEvent>,
-    mut bosses_destroyed_event_reader: EventReader<BossesDestroyedEvent>,
-    mut run_end_event_writer: EventWriter<RunEndEvent>,
-    mut change_bg_music_event_writer: EventWriter<ChangeBackgroundMusicEvent>,
-    mut cycle_phase_event_writer: EventWriter<CyclePhaseEvent>,
-    mut mob_destroyed_event_reader: EventReader<MobDestroyedEvent>,
-    mut mob_reached_bottom_event_reader: EventReader<MobReachedBottomGateEvent>,
-    mut mob_segment_destroyed_event_reader: EventReader<MobSegmentDestroyedEvent>,
-    mut play_sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut spawn_mob_event_writer: MessageWriter<SpawnMobEvent>,
+    mut bosses_destroyed_event_reader: MessageReader<BossesDestroyedEvent>,
+    mut run_end_event_writer: MessageWriter<RunEndEvent>,
+    mut change_bg_music_event_writer: MessageWriter<ChangeBackgroundMusicEvent>,
+    mut cycle_phase_event_writer: MessageWriter<CyclePhaseEvent>,
+    mut mob_destroyed_event_reader: MessageReader<MobDestroyedEvent>,
+    mut mob_reached_bottom_event_reader: MessageReader<MobReachedBottomGateEvent>,
+    mut mob_segment_destroyed_event_reader: MessageReader<MobSegmentDestroyedEvent>,
+    mut play_sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
     player_spawn_params: ResMut<InputRestrictionsAtSpawn>,
 ) {
     run_res.tick(
@@ -279,9 +269,9 @@ fn tick_run_system(
 
 fn handle_objective_system(
     mut run_res: ResMut<CurrentRunProgressResource>,
-    mut bottom_gate_event: EventReader<MobReachedBottomGateEvent>,
-    mut run_end_event: EventWriter<RunEndEvent>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut bottom_gate_event: MessageReader<MobReachedBottomGateEvent>,
+    mut run_end_event: MessageWriter<RunEndEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
 ) {
     if let Some(current_level) = &mut run_res.current_level {
         if let Some(objective) = &mut current_level.objective {
@@ -294,7 +284,7 @@ fn handle_objective_system(
                                 defense_data.gain_defense(value);
 
                                 // play heal sound effect
-                                sound_effect_event_writer.send(PlaySoundEffectEvent {
+                                sound_effect_event_writer.write(PlaySoundEffectEvent {
                                     sound_effect_type: SoundEffectType::DefenseHeal,
                                 });
                             }
@@ -303,7 +293,7 @@ fn handle_objective_system(
                                 defense_data.take_damage(value);
 
                                 //play damage sound effect
-                                sound_effect_event_writer.send(PlaySoundEffectEvent {
+                                sound_effect_event_writer.write(PlaySoundEffectEvent {
                                     sound_effect_type: SoundEffectType::DefenseDamage,
                                 });
                             }
@@ -311,7 +301,7 @@ fn handle_objective_system(
                     }
 
                     if defense_data.is_failed() {
-                        run_end_event.send(RunEndEvent {
+                        run_end_event.write(RunEndEvent {
                             outcome: RunOutcomeType::Defeat(RunDefeatType::DefenseDestroyed),
                         });
                     }
@@ -322,7 +312,7 @@ fn handle_objective_system(
 }
 
 fn run_end_system(
-    mut run_end_event_reader: EventReader<RunEndEvent>,
+    mut run_end_event_reader: MessageReader<RunEndEvent>,
     mut next_app_state: ResMut<NextState<AppStates>>,
 ) {
     for event in run_end_event_reader.read() {
@@ -382,15 +372,15 @@ mod test {
             ))
             .init_state::<AppStates>()
             .init_state::<GameStates>()
-            .add_event::<MobReachedBottomGateEvent>()
-            .add_event::<ChangeBackgroundMusicEvent>()
-            .add_event::<PlaySoundEffectEvent>()
-            .add_event::<SpawnConsumableEvent>()
-            .add_event::<BossesDestroyedEvent>()
-            .add_event::<SpawnFormationEvent>()
-            .add_event::<SpawnMobEvent>()
-            .add_event::<MobDestroyedEvent>()
-            .add_event::<MobSegmentDestroyedEvent>()
+            .add_message::<MobReachedBottomGateEvent>()
+            .add_message::<ChangeBackgroundMusicEvent>()
+            .add_message::<PlaySoundEffectEvent>()
+            .add_message::<SpawnConsumableEvent>()
+            .add_message::<BossesDestroyedEvent>()
+            .add_message::<SpawnFormationEvent>()
+            .add_message::<SpawnMobEvent>()
+            .add_message::<MobDestroyedEvent>()
+            .add_message::<MobSegmentDestroyedEvent>()
             .insert_resource(PlayersResource::default())
             .insert_resource(InputRestrictionsAtSpawn::default())
             .add_plugins(RunPlugin);
@@ -427,7 +417,7 @@ mod test {
                 .get()
         );
         // This is the main part of the test
-        app.world_mut().send_event(MobReachedBottomGateEvent {
+        app.world_mut().write_message(MobReachedBottomGateEvent {
             defense_interaction: DefenseInteraction::Damage(damage_amount),
             mob_type: None,
             mob_segment_type: None,

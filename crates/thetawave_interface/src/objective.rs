@@ -1,10 +1,10 @@
-use bevy_ecs::prelude::Event;
+use bevy_ecs::prelude::Message;
 use serde::Deserialize;
 
 use crate::spawnable::{MobSegmentType, MobType};
 
 // Event for sending damage dealt from mob reaching bottom of arena
-#[derive(Event)]
+#[derive(Message)]
 pub struct MobReachedBottomGateEvent {
     pub mob_type: Option<MobType>,
     pub mob_segment_type: Option<MobSegmentType>,

@@ -1,9 +1,6 @@
 use bevy::{
     math::{Vec3, Vec3Swizzles},
-    prelude::{
-        default, Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Query, Res,
-        Transform,
-    },
+    prelude::{default, Commands, Entity, MessageReader, MessageWriter, Query, Res, Transform},
     time::Time,
 };
 use bevy_rapier2d::prelude::{ImpulseJoint, TypedJoint};
@@ -68,7 +65,7 @@ pub struct RandomRotationData {
 /// Executes the behaviors of mob segments
 pub fn mob_segment_execute_behavior_system(
     mut commands: Commands,
-    mut collision_events: EventReader<SortedCollisionEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
     mut mob_segment_query: Query<(
         Entity,
         &mut MobSegmentComponent,
@@ -77,17 +74,17 @@ pub fn mob_segment_execute_behavior_system(
         &HealthComponent,
         Option<&mut WeaponsComponent>,
     )>,
-    mut spawn_effect_event_writer: EventWriter<SpawnEffectEvent>,
+    mut spawn_effect_event_writer: MessageWriter<SpawnEffectEvent>,
     player_query: Query<(Entity, &PlayerIncomingDamageComponent)>,
     loot_drops_resource: Res<LootDropsResource>,
-    mut spawn_consumable_event_writer: EventWriter<SpawnConsumableEvent>,
-    mut spawn_item_event_writer: EventWriter<SpawnItemEvent>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut spawn_consumable_event_writer: MessageWriter<SpawnConsumableEvent>,
+    mut spawn_item_event_writer: MessageWriter<SpawnItemEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
     time: Res<Time>,
-    mut spawn_mob_event_writer: EventWriter<SpawnMobEvent>,
-    mut mob_segment_destroyed_event_writer: EventWriter<MobSegmentDestroyedEvent>,
+    mut spawn_mob_event_writer: MessageWriter<SpawnMobEvent>,
+    mut mob_segment_destroyed_event_writer: MessageWriter<MobSegmentDestroyedEvent>,
     game_parameters: Res<GameParametersResource>,
-    mut damage_dealt_event_writer: EventWriter<DamageDealtEvent>,
+    mut damage_dealt_event_writer: MessageWriter<DamageDealtEvent>,
 ) {
     let mut collision_events_vec = vec![];
     for collision_event in collision_events.read() {
@@ -124,12 +121,12 @@ pub fn mob_segment_execute_behavior_system(
                 }
                 MobSegmentBehavior::DieAtZeroHealth => {
                     if mob_seg_health.is_dead() {
-                        sound_effect_event_writer.send(PlaySoundEffectEvent {
+                        sound_effect_event_writer.write(PlaySoundEffectEvent {
                             sound_effect_type: SoundEffectType::MobExplosion,
                         });
 
                         // spawn mob explosion
-                        spawn_effect_event_writer.send(SpawnEffectEvent {
+                        spawn_effect_event_writer.write(SpawnEffectEvent {
                             effect_type: EffectType::MobExplosion,
                             transform: Transform {
                                 translation: mob_segment_transform.translation,
@@ -152,9 +149,9 @@ pub fn mob_segment_execute_behavior_system(
                         );
 
                         // despawn mob
-                        commands.entity(entity).despawn_recursive();
+                        commands.entity(entity).despawn();
 
-                        mob_segment_destroyed_event_writer.send(MobSegmentDestroyedEvent {
+                        mob_segment_destroyed_event_writer.write(MobSegmentDestroyedEvent {
                             mob_segment_type: mob_segment_component.mob_segment_type.clone(),
                             entity,
                         });
@@ -202,7 +199,7 @@ pub fn mob_segment_execute_behavior_system(
                                 }
                             };
 
-                            spawn_mob_event_writer.send(SpawnMobEvent {
+                            spawn_mob_event_writer.write(SpawnMobEvent {
                                 mob_type: mob_spawner.mob_type.clone(),
                                 position,
                                 rotation: mob_segment_transform.rotation, // passed rotation of the parent mob
@@ -224,8 +221,8 @@ pub fn mob_segment_execute_behavior_system(
 
 /// Applies disconnected behaviors to other parts of the mob when a mob segment is destroyed
 pub fn mob_segment_apply_disconnected_behaviors_system(
-    mut mob_destroyed_event_reader: EventReader<MobDestroyedEvent>,
-    mut mob_segment_destroyed_event_reader: EventReader<MobSegmentDestroyedEvent>,
+    mut mob_destroyed_event_reader: MessageReader<MobDestroyedEvent>,
+    mut mob_segment_destroyed_event_reader: MessageReader<MobSegmentDestroyedEvent>,
     mut mob_segment_query: Query<(Entity, &mut MobSegmentComponent, &ImpulseJoint)>,
     mob_segments_resource: Res<MobSegmentsResource>,
 ) {
@@ -258,11 +255,7 @@ pub fn mob_segment_apply_disconnected_behaviors_system(
 
             for pair in entity_pairs.iter_mut() {
                 // add entities to mob segment entities if they are the mob, or their parent is in the vector aleady
-                if pair.parent == *entity
-                    || mob_segment_entities
-                        .iter()
-                        .any(|mob_segment_entity| *mob_segment_entity == pair.parent)
-                {
+                if pair.parent == *entity || mob_segment_entities.contains(&pair.parent) {
                     mob_segment_entities.push(pair.entity);
                     remove_entities.push(pair.entity);
                 }
@@ -272,18 +265,11 @@ pub fn mob_segment_apply_disconnected_behaviors_system(
                 break;
             }
 
-            entity_pairs.retain(|entity_pair| {
-                !remove_entities
-                    .iter()
-                    .any(|remove_entity| *remove_entity == entity_pair.entity)
-            });
+            entity_pairs.retain(|entity_pair| !remove_entities.contains(&entity_pair.entity));
         }
 
         for (mob_segment_entity, mut mob_segment_comoponent, _) in mob_segment_query.iter_mut() {
-            if mob_segment_entities
-                .iter()
-                .any(|check_entity| *check_entity == mob_segment_entity)
-            {
+            if mob_segment_entities.contains(&mob_segment_entity) {
                 if let Some(disconnected_behaviors) = mob_segments_resource.mob_segments
                     [&mob_segment_comoponent.mob_segment_type]
                     .disconnected_behaviors
@@ -301,7 +287,7 @@ fn deal_damage_to_player_on_impact(
     entity: Entity,
     collision_events: &[&SortedCollisionEvent],
     player_query: &Query<(Entity, &PlayerIncomingDamageComponent)>,
-    damage_dealt_event_writer: &mut EventWriter<DamageDealtEvent>,
+    damage_dealt_event_writer: &mut MessageWriter<DamageDealtEvent>,
 ) {
     for collision_event in collision_events.iter() {
         if let SortedCollisionEvent::PlayerToMobSegmentContact {
@@ -317,7 +303,7 @@ fn deal_damage_to_player_on_impact(
                     let damage = (*mob_segment_damage as f32 * player_incoming_damage.multiplier)
                         .round() as usize;
                     if player_entity_q == *player_entity && damage > 0 {
-                        damage_dealt_event_writer.send(DamageDealtEvent {
+                        damage_dealt_event_writer.write(DamageDealtEvent {
                             damage,
                             target: player_entity_q,
                         });
@@ -333,7 +319,7 @@ fn receive_damage_on_impact(
     entity: Entity,
     collision_events: &[&SortedCollisionEvent],
     player_query: &Query<(Entity, &PlayerIncomingDamageComponent)>,
-    damage_dealt_event_writer: &mut EventWriter<DamageDealtEvent>,
+    damage_dealt_event_writer: &mut MessageWriter<DamageDealtEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -346,7 +332,7 @@ fn receive_damage_on_impact(
                 if entity == *mob_segment_entity {
                     for (player_entity_q, _) in player_query.iter() {
                         if player_entity_q == *player_entity && *player_damage > 0 {
-                            damage_dealt_event_writer.send(DamageDealtEvent {
+                            damage_dealt_event_writer.write(DamageDealtEvent {
                                 damage: *player_damage,
                                 target: *mob_segment_entity,
                             });
@@ -361,7 +347,7 @@ fn receive_damage_on_impact(
                 mob_damage,
             } => {
                 if entity == *mob_segment_entity && *mob_damage > 0 {
-                    damage_dealt_event_writer.send(DamageDealtEvent {
+                    damage_dealt_event_writer.write(DamageDealtEvent {
                         damage: *mob_damage,
                         target: *mob_segment_entity,
                     });
@@ -370,13 +356,11 @@ fn receive_damage_on_impact(
             SortedCollisionEvent::MobSegmentToMobSegmentContact {
                 mob_segment_entity_1,
                 mob_segment_damage_2,
-            } => {
-                if entity == *mob_segment_entity_1 && *mob_segment_damage_2 > 0 {
-                    damage_dealt_event_writer.send(DamageDealtEvent {
-                        damage: *mob_segment_damage_2,
-                        target: *mob_segment_entity_1,
-                    });
-                }
+            } if entity == *mob_segment_entity_1 && *mob_segment_damage_2 > 0 => {
+                damage_dealt_event_writer.write(DamageDealtEvent {
+                    damage: *mob_segment_damage_2,
+                    target: *mob_segment_entity_1,
+                });
             }
 
             _ => {}

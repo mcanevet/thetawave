@@ -36,29 +36,29 @@ pub(in crate::player) fn player_movement_system(
         // handle movement in x direction
         if x_axis != 0 {
             // accelerate to the player's maximum speed stat
-            vel.linvel.x += player_movement.acceleration.x * (x_axis as f32);
-            if vel.linvel.x.abs() > player_movement.speed.x {
-                vel.linvel.x = (vel.linvel.x / vel.linvel.x.abs()) * player_movement.speed.x;
+            vel.linear.x += player_movement.acceleration.x * (x_axis as f32);
+            if vel.linear.x.abs() > player_movement.speed.x {
+                vel.linear.x = (vel.linear.x / vel.linear.x.abs()) * player_movement.speed.x;
             }
-        } else if vel.linvel.x.abs() > game_parameters.stop_threshold {
+        } else if vel.linear.x.abs() > game_parameters.stop_threshold {
             // decelerate
-            vel.linvel.x -= player_movement.deceleration.x * (vel.linvel.x / vel.linvel.x.abs());
+            vel.linear.x -= player_movement.deceleration.x * (vel.linear.x / vel.linear.x.abs());
         } else {
-            vel.linvel.x = 0.0;
+            vel.linear.x = 0.0;
         }
 
         // handle movement in y direction
         if y_axis != 0 {
             // accelerate to the player's maximum speed stat
-            vel.linvel.y += player_movement.acceleration.y * (y_axis as f32);
-            if vel.linvel.y.abs() > player_movement.speed.y {
-                vel.linvel.y = (vel.linvel.y / vel.linvel.y.abs()) * player_movement.speed.y;
+            vel.linear.y += player_movement.acceleration.y * (y_axis as f32);
+            if vel.linear.y.abs() > player_movement.speed.y {
+                vel.linear.y = (vel.linear.y / vel.linear.y.abs()) * player_movement.speed.y;
             }
-        } else if vel.linvel.y.abs() > game_parameters.stop_threshold {
+        } else if vel.linear.y.abs() > game_parameters.stop_threshold {
             // decelerate
-            vel.linvel.y -= player_movement.deceleration.y * (vel.linvel.y / vel.linvel.y.abs());
+            vel.linear.y -= player_movement.deceleration.y * (vel.linear.y / vel.linear.y.abs());
         } else {
-            vel.linvel.y = 0.0;
+            vel.linear.y = 0.0;
         }
     }
 }
@@ -68,7 +68,7 @@ pub(in crate::player) fn player_tilt_system(
     mut player_info: Query<(&Velocity, &mut Transform), With<PlayerComponent>>,
 ) {
     for (vel, mut player_trans) in player_info.iter_mut() {
-        let rotation_amount = -vel.linvel.x.atan2(vel.linvel.y.abs()) / PI;
+        let rotation_amount = -vel.linear.x.atan2(vel.linear.y.abs()) / PI;
 
         player_trans.rotation.z += rotation_amount * 0.01;
         player_trans.rotation.z *= 0.9;

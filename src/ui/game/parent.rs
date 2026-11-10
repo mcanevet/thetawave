@@ -2,13 +2,9 @@ use bevy::{
     asset::Handle,
     color::{Color, Srgba},
     ecs::system::{Commands, Res},
-    hierarchy::BuildChildren,
-    render::texture::Image,
+    image::Image,
     text::Font,
-    ui::{
-        node_bundles::NodeBundle, AlignItems, BackgroundColor, FlexDirection, JustifyContent,
-        Style, Val,
-    },
+    ui::{AlignItems, BackgroundColor, FlexDirection, JustifyContent, Node, Val},
     utils::default,
 };
 use thetawave_assets::UiAssets;
@@ -97,91 +93,78 @@ pub(super) fn setup_game_ui_system(
 
     // Spawn the top level Node for all game ui and all of its child entities
     commands
-        .spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
             ..default()
         })
         .insert(GameCleanup)
         .with_children(|game| {
             // Parent node for top row containing the phase ui
-            game.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: TOP_ROW_HEIGHT,
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            game.spawn(Node {
+                width: Val::Percent(100.0),
+                height: TOP_ROW_HEIGHT,
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .with_children(|top_row| {
                 // Top left corner
-                top_row.spawn(NodeBundle {
-                    style: Style {
+                top_row.spawn((
+                    Node {
                         width: TOP_CORNER_WIDTH,
                         height: Val::Percent(100.0),
                         ..default()
                     },
-                    background_color: OUTSIDE_BORDER_BG_COLOR,
-                    ..default()
-                });
+                    OUTSIDE_BORDER_BG_COLOR,
+                ));
 
                 // Top middle
                 top_row
-                    .spawn(NodeBundle {
-                        style: Style {
+                    .spawn((
+                        Node {
                             width: TOP_CENTER_WIDTH,
                             height: Val::Percent(100.0),
                             flex_direction: FlexDirection::Row,
                             ..default()
                         },
-                        background_color: OUTSIDE_BORDER_BG_COLOR,
-                        ..default()
-                    })
+                        OUTSIDE_BORDER_BG_COLOR,
+                    ))
                     .with_children(|top_middle| {
                         // spawn the phase ui
                         top_middle.spawn_phase_ui(font.clone());
                     });
 
                 // Top right corner
-                top_row.spawn(NodeBundle {
-                    style: Style {
+                top_row.spawn((
+                    Node {
                         width: TOP_CORNER_WIDTH,
                         height: Val::Percent(100.0),
                         ..default()
                     },
-                    background_color: OUTSIDE_BORDER_BG_COLOR,
-                    ..default()
-                });
+                    OUTSIDE_BORDER_BG_COLOR,
+                ));
             });
 
             // Middle Row
-            game.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: MIDDLE_ROW_HEIGHT,
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            game.spawn(Node {
+                width: Val::Percent(100.0),
+                height: MIDDLE_ROW_HEIGHT,
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .with_children(|middle_row| {
                 // Left column on the left side of window excluding the corners
                 middle_row
-                    .spawn(NodeBundle {
-                        style: Style {
+                    .spawn((
+                        Node {
                             width: MIDDLE_SIDE_WIDTH,
                             height: Val::Percent(100.0),
                             flex_direction: FlexDirection::Column,
                             ..default()
                         },
-                        background_color: OUTSIDE_BORDER_BG_COLOR,
-                        ..default()
-                    })
+                        OUTSIDE_BORDER_BG_COLOR,
+                    ))
                     .with_children(|middle_left| {
                         // Player 1 Ui on the left
                         middle_left.spawn_player_ui(
@@ -194,14 +177,11 @@ pub(super) fn setup_game_ui_system(
 
                 // Middle column over the top of the arena
                 middle_row
-                    .spawn(NodeBundle {
-                        style: Style {
-                            width: MIDDLE_CENTER_WIDTH,
-                            height: Val::Percent(100.0),
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::Center,
-                            ..default()
-                        },
+                    .spawn(Node {
+                        width: MIDDLE_CENTER_WIDTH,
+                        height: Val::Percent(100.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
                         ..default()
                     })
                     .with_children(|middle_center| {
@@ -211,16 +191,15 @@ pub(super) fn setup_game_ui_system(
 
                 // Left column on the left side of window excluding the corners
                 middle_row
-                    .spawn(NodeBundle {
-                        style: Style {
+                    .spawn((
+                        Node {
                             width: MIDDLE_SIDE_WIDTH,
                             height: Val::Percent(100.0),
                             flex_direction: FlexDirection::Column,
                             ..default()
                         },
-                        background_color: OUTSIDE_BORDER_BG_COLOR,
-                        ..default()
-                    })
+                        OUTSIDE_BORDER_BG_COLOR,
+                    ))
                     .with_children(|middle_right| {
                         // Player 1 Ui onm the left
                         middle_right.spawn_player_ui(
@@ -232,54 +211,48 @@ pub(super) fn setup_game_ui_system(
                     });
             });
 
-            game.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: BOTTOM_ROW_HEIGHT,
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            game.spawn(Node {
+                width: Val::Percent(100.0),
+                height: BOTTOM_ROW_HEIGHT,
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .with_children(|bottom_row| {
                 // Top left corner
-                bottom_row.spawn(NodeBundle {
-                    style: Style {
+                bottom_row.spawn((
+                    Node {
                         width: BOTTOM_CORNER_WIDTH,
                         height: Val::Percent(100.0),
                         ..default()
                     },
-                    background_color: OUTSIDE_BORDER_BG_COLOR,
-                    ..default()
-                });
+                    OUTSIDE_BORDER_BG_COLOR,
+                ));
 
                 // Bottom middle
                 bottom_row
-                    .spawn(NodeBundle {
-                        style: Style {
+                    .spawn((
+                        Node {
                             width: BOTTOM_CENTER_WIDTH,
                             height: Val::Percent(100.0),
                             flex_direction: FlexDirection::Row,
                             ..default()
                         },
-                        background_color: OUTSIDE_BORDER_BG_COLOR,
-                        ..default()
-                    })
+                        OUTSIDE_BORDER_BG_COLOR,
+                    ))
                     .with_children(|bottom_middle| {
                         // spawn the level ui
                         bottom_middle.spawn_level_ui(font);
                     });
 
                 // Bottom right corner
-                bottom_row.spawn(NodeBundle {
-                    style: Style {
+                bottom_row.spawn((
+                    Node {
                         width: BOTTOM_CORNER_WIDTH,
                         height: Val::Percent(100.0),
                         ..default()
                     },
-                    background_color: OUTSIDE_BORDER_BG_COLOR,
-                    ..default()
-                });
+                    OUTSIDE_BORDER_BG_COLOR,
+                ));
             });
         });
 }

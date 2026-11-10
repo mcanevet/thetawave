@@ -3,12 +3,19 @@ name = "thetawave_assets"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lints.rust]
+unexpected_cfgs = { level = "allow" }
 
 [dependencies]
-rand = { workspace = true }
-bevy_kira_audio = { workspace = true }
-bevy_asset_loader = { workspace = true }
-thetawave_interface = { workspace = true }
+rand = "0.8.5"
+bevy_kira_audio = { version = "0.27", features = ["mp3", "wav"] }
+bevy_asset_loader = { version = "0.28", features = [
+    "2d",
+    "3d",
+    "standard_dynamic_assets",
+] }
+thetawave_interface = { path = "../thetawave_interface" }
 # required due to bevy_asset_loader expecting bevy to be imported
-bevy = { workspace = true }
+# port(0.14->0.20): TextureAtlasLayout moved to bevy_image, Font to
+# bevy_text — covered by default features.
+bevy = "0.20.1"

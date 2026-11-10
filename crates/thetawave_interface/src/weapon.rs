@@ -87,7 +87,7 @@ impl From<Vec<WeaponData>> for WeaponsComponent {
     fn from(value: Vec<WeaponData>) -> Self {
         let weapons = value
             .iter()
-            .map(|weapon_data| Weapon::from(weapon_data))
+            .map(Weapon::from)
             .collect();
 
         WeaponsComponent { weapons }
@@ -150,7 +150,10 @@ impl Weapon {
     }
     /// Returns ture if the weapon can be fired (<=> is currently reloaded)
     pub fn can_fire(&self) -> bool {
-        self.reload_timer.finished()
+        // port(0.14->0.20): Timer::finished() became private in the
+        // 0.15 Timer<T> rework; "no time remaining" is the surviving
+        // public check for a non-repeating timer that has fully elapsed.
+        self.reload_timer.remaining_secs() == 0.0
     }
 
     /// Returns the projectiles data if the weapon can be fired and resets the reload timer

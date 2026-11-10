@@ -6,14 +6,15 @@ use crate::{
 };
 use bevy::{
     color::{Color, Srgba},
-    core::Name,
+    ecs::name::Name,
+    image::TextureAtlas,
     log::info,
     math::{Quat, Vec2, Vec3},
     prelude::{
-        default, BuildChildren, Commands, Component, Event, EventReader, EventWriter, Query, Res,
-        Resource, Transform,
+        default, Commands, Component, Message, MessageReader, MessageWriter, Query, Res, Resource,
+        Transform,
     },
-    sprite::{Sprite, SpriteBundle, TextureAtlas},
+    sprite::Sprite,
     time::{Timer, TimerMode},
 };
 use bevy_rapier2d::{
@@ -276,7 +277,7 @@ pub enum JointType {
 /// Spawns mobs from events
 pub fn spawn_mob_system(
     mut commands: Commands,
-    mut event_reader: EventReader<SpawnMobEvent>,
+    mut event_reader: MessageReader<SpawnMobEvent>,
     mob_resource: Res<MobsResource>,
     mob_segments_resource: Res<MobSegmentsResource>,
     mob_assets: Res<MobAssets>,
@@ -347,22 +348,24 @@ pub fn spawn_mob(
     // create mob entity
     let mut mob = commands.spawn_empty();
 
-    mob.insert(TextureAtlas {
-        layout: mob_assets.get_mob_texture_atlas_layout(mob_type),
+    // Bevy 0.20 port: `SpriteBundle` + separate `TextureAtlas` component were
+    // replaced by a single `Sprite` with an embedded `texture_atlas`.
+    mob.insert(Sprite {
+        image: mob_assets.get_mob_image(mob_type),
+        texture_atlas: Some(TextureAtlas {
+            layout: mob_assets.get_mob_texture_atlas_layout(mob_type),
+            ..default()
+        }),
         ..default()
     })
-    .insert(SpriteBundle {
-        texture: mob_assets.get_mob_image(mob_type),
-        transform: Transform {
-            translation: position.extend(mob_data.z_level),
-            scale: Vec3::new(
-                game_parameters.sprite_scale,
-                game_parameters.sprite_scale,
-                1.0,
-            ),
-            rotation,
-        },
-        ..default()
+    .insert(Transform {
+        translation: position.extend(mob_data.z_level),
+        scale: Vec3::new(
+            game_parameters.sprite_scale,
+            game_parameters.sprite_scale,
+            1.0,
+        ),
+        rotation,
     })
     .insert(AnimationComponent {
         timer: Timer::from_seconds(mob_data.animation.frame_duration, TimerMode::Repeating),
@@ -382,10 +385,10 @@ pub fn spawn_mob(
         coefficient: 1.0,
         combine_rule: CoefficientCombineRule::Max,
     })
-    .insert(CollisionGroups {
-        memberships: SPAWNABLE_COLLIDER_GROUP | MOB_COLLIDER_GROUP,
-        filters: Group::ALL ^ HORIZONTAL_BARRIER_COLLIDER_GROUP,
-    })
+    .insert(CollisionGroups::new(
+        SPAWNABLE_COLLIDER_GROUP | MOB_COLLIDER_GROUP,
+        Group::ALL ^ HORIZONTAL_BARRIER_COLLIDER_GROUP,
+    ))
     .insert(MobComponent::from(mob_data))
     .insert(HealthComponent::from(mob_data))
     .insert(SpawnableComponent::from(mob_data))
@@ -410,21 +413,20 @@ pub fn spawn_mob(
     if let Some(thruster) = &mob_data.thruster {
         mob.with_children(|parent| {
             parent
-                .spawn(SpriteBundle {
-                    texture: mob_assets.get_thruster_image(mob_type).unwrap(),
-                    transform: Transform::from_xyz(0.0, thruster.y_offset, -1.0),
-                    sprite: Sprite {
+                .spawn((
+                    Sprite {
+                        image: mob_assets.get_thruster_image(mob_type).unwrap(),
+                        texture_atlas: Some(TextureAtlas {
+                            layout: mob_assets
+                                .get_thruster_texture_atlas_layout(mob_type)
+                                .unwrap(),
+                            ..default()
+                        }),
                         color: thruster.affine_bloom_transformation(game_options.bloom_intensity),
                         ..default()
                     },
-                    ..default()
-                })
-                .insert(TextureAtlas {
-                    layout: mob_assets
-                        .get_thruster_texture_atlas_layout(mob_type)
-                        .unwrap(),
-                    ..default()
-                })
+                    Transform::from_xyz(0.0, thruster.y_offset, -1.0),
+                ))
                 .insert(AnimationComponent {
                     timer: Timer::from_seconds(
                         thruster.animation.frame_duration,
@@ -469,19 +471,19 @@ pub fn spawn_mob(
     }
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct BossesDestroyedEvent;
 
 pub fn check_boss_mobs_system(
     boss_mobs_query: Query<&BossComponent>,
-    mut mob_destroyed_event_reader: EventReader<MobDestroyedEvent>,
-    mut bosses_destroyed_event_writer: EventWriter<BossesDestroyedEvent>,
+    mut mob_destroyed_event_reader: MessageReader<MobDestroyedEvent>,
+    mut bosses_destroyed_event_writer: MessageWriter<BossesDestroyedEvent>,
 ) {
     for event in mob_destroyed_event_reader.read() {
         // check if the mob that was destroyed was a boss, and check that there are no remaining boss mobs
-        if event.is_boss && boss_mobs_query.get_single().is_err() {
+        if event.is_boss && boss_mobs_query.single().is_err() {
             info!("Sending bosses destroyed event");
-            bosses_destroyed_event_writer.send(BossesDestroyedEvent);
+            bosses_destroyed_event_writer.write(BossesDestroyedEvent);
         }
     }
 }

@@ -1,11 +1,11 @@
 use bevy::{
     color::Srgba,
+    image::TextureAtlas,
     math::{EulerRot, Mat2},
     prelude::{
-        Commands, Component, Entity, Event, EventReader, EventWriter, Name, Quat, Res, Resource,
-        Sprite, Timer, TimerMode, Transform, Vec2, Vec3Swizzles,
+        Commands, Component, Entity, Message, MessageReader, MessageWriter, Name, Quat, Res,
+        Resource, Sprite, Timer, TimerMode, Transform, Vec2, Vec3Swizzles,
     },
-    sprite::{SpriteBundle, TextureAtlas},
     utils::default,
 };
 use bevy_rapier2d::prelude::{
@@ -41,7 +41,7 @@ pub(in crate::spawnable) use self::behavior::{
 
 use super::{mob::ColliderData, InitialMotion};
 
-#[derive(Event, Clone)]
+#[derive(Message, Clone)]
 pub struct FireWeaponEvent {
     pub weapon_projectile_data: WeaponProjectileData,
     pub source_transform: Transform,
@@ -105,8 +105,8 @@ pub struct ProjectileResource {
 /// Spawns projectiles from events
 pub fn spawn_projectile_system(
     mut commands: Commands,
-    mut fire_weapon_event_reader: EventReader<FireWeaponEvent>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut fire_weapon_event_reader: MessageReader<FireWeaponEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
     projectile_resource: Res<ProjectileResource>,
     projectile_assets: Res<ProjectileAssets>,
     game_parameters: Res<GameParametersResource>,
@@ -130,7 +130,7 @@ pub fn spawn_projectile_system(
 
 pub fn spawn_projectile_from_weapon(
     commands: &mut Commands,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
     weapon_projectile_data: WeaponProjectileData,
     initial_motion: InitialMotion,
     source_entity: Entity,
@@ -141,8 +141,8 @@ pub fn spawn_projectile_from_weapon(
     game_options: &GameOptions,
 ) {
     // Play the sound effect for the projectiles firing
-    sound_effect_event_writer.send(PlaySoundEffectEvent {
-        sound_effect_type: weapon_projectile_data.sound.clone(),
+    sound_effect_event_writer.write(PlaySoundEffectEvent {
+        sound_effect_type: weapon_projectile_data.sound,
     });
 
     // Get data for the type of ammunition being spawned
@@ -208,20 +208,17 @@ pub fn spawn_projectile_from_weapon(
 
         projectile
             .insert(LockedAxes::ROTATION_LOCKED)
-            .insert(SpriteBundle {
-                texture: projectile_assets.get_image(&weapon_projectile_data.ammunition),
-                sprite: Sprite {
-                    color: bevy::prelude::Color::Srgba(
-                        projectile_data.affine_bloom_transformation(game_options.bloom_intensity),
-                    ),
+            .insert(Sprite {
+                image: projectile_assets.get_image(&weapon_projectile_data.ammunition),
+                texture_atlas: Some(TextureAtlas {
+                    layout: projectile_assets
+                        .get_texture_atlas_layout(&weapon_projectile_data.ammunition),
                     ..default()
-                },
-                ..default()
-            })
-            .insert(TextureAtlas {
-                layout: projectile_assets
-                    .get_texture_atlas_layout(&weapon_projectile_data.ammunition),
-                ..default()
+                }),
+                color: bevy::prelude::Color::Srgba(
+                    projectile_data.affine_bloom_transformation(game_options.bloom_intensity),
+                ),
+                ..Default::default()
             })
             .insert(AnimationComponent {
                 timer: Timer::from_seconds(
@@ -254,13 +251,13 @@ pub fn spawn_projectile_from_weapon(
                 behaviors: projectile_data.spawnable_behaviors.clone(),
             })
             .insert(ActiveEvents::COLLISION_EVENTS)
-            .insert(CollisionGroups {
-                memberships: SPAWNABLE_COLLIDER_GROUP | projectile_colider_group,
-                filters: Group::ALL
+            .insert(CollisionGroups::new(
+                SPAWNABLE_COLLIDER_GROUP | projectile_colider_group,
+                Group::ALL
                     ^ (HORIZONTAL_BARRIER_COLLIDER_GROUP
                         | SPAWNABLE_COLLIDER_GROUP
                         | projectile_colider_group),
-            })
+            ))
             .insert(GameCleanup)
             .insert(Name::new(projectile_data.projectile_type.to_string()));
 

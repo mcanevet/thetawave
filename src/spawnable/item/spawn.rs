@@ -2,11 +2,12 @@ use crate::spawnable::SpawnableBehavior;
 use crate::{
     animation::AnimationComponent, game::GameParametersResource, spawnable::SpawnableComponent,
 };
+use bevy::image::TextureAtlas;
 use bevy::prelude::{
-    in_state, App, Commands, EventReader, IntoSystemConfigs, Name, Plugin, Res, Timer, TimerMode,
-    Transform, Update, Vec2, Vec3,
+    in_state, App, Commands, IntoScheduleConfigs, MessageReader, Name, Plugin, Res, Timer,
+    TimerMode, Transform, Update, Vec2, Vec3,
 };
-use bevy::sprite::{SpriteBundle, TextureAtlas};
+use bevy::sprite::Sprite;
 use bevy::utils::default;
 use bevy_rapier2d::prelude::{ActiveEvents, Collider, LockedAxes, RigidBody, Sensor, Velocity};
 use thetawave_assets::ItemAssets;
@@ -37,7 +38,7 @@ impl Plugin for ItemSpawnPlugin {
 
 pub fn spawn_item_system(
     mut commands: Commands,
-    mut event_reader: EventReader<SpawnItemEvent>,
+    mut event_reader: MessageReader<SpawnItemEvent>,
     item_resource: Res<ItemResource>,
     item_assets: Res<ItemAssets>,
     game_parameters: Res<GameParametersResource>,
@@ -80,12 +81,12 @@ pub fn spawn_item(
     }
 
     // Sprite components
-    item.insert(SpriteBundle {
-        texture: item_assets.get_image(item_type),
-        ..default()
-    })
-    .insert(TextureAtlas {
-        layout: item_assets.get_texture_atlas_layout(item_type),
+    item.insert(Sprite {
+        image: item_assets.get_image(item_type),
+        texture_atlas: Some(TextureAtlas {
+            layout: item_assets.get_texture_atlas_layout(item_type),
+            ..default()
+        }),
         ..default()
     })
     .insert(AnimationComponent {

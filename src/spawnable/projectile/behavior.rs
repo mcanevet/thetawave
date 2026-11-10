@@ -3,10 +3,7 @@ use crate::{
     spawnable::{MobComponent, MobSegmentComponent, SpawnEffectEvent},
 };
 use bevy::{
-    prelude::{
-        default, Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Query, Res,
-        Transform,
-    },
+    prelude::{default, Commands, Entity, MessageReader, MessageWriter, Query, Res, Transform},
     time::Time,
 };
 use serde::Deserialize;
@@ -37,11 +34,11 @@ pub fn projectile_execute_behavior_system(
     player_query: Query<(Entity, &PlayerComponent)>,
     mob_query: Query<(Entity, &MobComponent)>,
     mob_segment_query: Query<(Entity, &MobSegmentComponent)>,
-    mut collision_events: EventReader<SortedCollisionEvent>,
-    mut spawn_effect_event_writer: EventWriter<SpawnEffectEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
+    mut spawn_effect_event_writer: MessageWriter<SpawnEffectEvent>,
     time: Res<Time>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
-    mut damage_dealt_event_writer: EventWriter<DamageDealtEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
+    mut damage_dealt_event_writer: MessageWriter<DamageDealtEvent>,
 ) {
     // Put all collision events in a vec so they can be read more than once
     let collision_events_vec: Vec<_> = collision_events.read().collect();
@@ -87,12 +84,12 @@ pub fn projectile_execute_behavior_system(
                     &mut damage_dealt_event_writer,
                 ),
                 ProjectileBehavior::TimedDespawn { despawn_time } => {
-                    projectile_component.time_alive += time.delta_seconds();
+                    projectile_component.time_alive += time.delta_secs();
                     if projectile_component.time_alive > despawn_time {
                         match &projectile_type {
                             ProjectileType::Blast(faction) => match faction {
                                 Faction::Enemy => {
-                                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                                    spawn_effect_event_writer.write(SpawnEffectEvent {
                                         effect_type: EffectType::EnemyBlastDespawn,
                                         transform: Transform {
                                             translation: projectile_transform.translation,
@@ -103,7 +100,7 @@ pub fn projectile_execute_behavior_system(
                                     });
                                 }
                                 Faction::Ally => {
-                                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                                    spawn_effect_event_writer.write(SpawnEffectEvent {
                                         effect_type: EffectType::AllyBlastDespawn,
                                         transform: Transform {
                                             translation: projectile_transform.translation,
@@ -117,7 +114,7 @@ pub fn projectile_execute_behavior_system(
                             },
                             ProjectileType::Bullet(faction) => match faction {
                                 Faction::Enemy => {
-                                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                                    spawn_effect_event_writer.write(SpawnEffectEvent {
                                         effect_type: EffectType::EnemyBulletDespawn,
                                         transform: Transform {
                                             translation: projectile_transform.translation,
@@ -129,7 +126,7 @@ pub fn projectile_execute_behavior_system(
                                 }
 
                                 Faction::Ally => {
-                                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                                    spawn_effect_event_writer.write(SpawnEffectEvent {
                                         effect_type: EffectType::AllyBulletDespawn,
                                         transform: Transform {
                                             translation: projectile_transform.translation,
@@ -143,7 +140,7 @@ pub fn projectile_execute_behavior_system(
                             },
                         }
 
-                        commands.entity(projectile_entity).despawn_recursive();
+                        commands.entity(projectile_entity).despawn();
                     }
                 }
             }
@@ -158,8 +155,8 @@ fn deal_damage_on_contact(
     player_query: &Query<(Entity, &PlayerComponent)>,
     mob_query: &Query<(Entity, &MobComponent)>,
     mob_segment_query: &Query<(Entity, &MobSegmentComponent)>,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
-    damage_dealt_event_writer: &mut EventWriter<DamageDealtEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
+    damage_dealt_event_writer: &mut MessageWriter<DamageDealtEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -173,11 +170,11 @@ fn deal_damage_on_contact(
                     && matches!(*projectile_faction, Faction::Neutral | Faction::Enemy)
                 {
                     // deal damage to player
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
+                    sound_effect_event_writer.write(PlaySoundEffectEvent {
                         sound_effect_type: SoundEffectType::PlayerHit,
                     });
                     if player_query.contains(*player_entity) && *projectile_damage > 0 {
-                        damage_dealt_event_writer.send(DamageDealtEvent {
+                        damage_dealt_event_writer.write(DamageDealtEvent {
                             damage: *projectile_damage,
                             target: *player_entity,
                         });
@@ -200,11 +197,11 @@ fn deal_damage_on_contact(
                     }
                 {
                     // deal damage to mob
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
+                    sound_effect_event_writer.write(PlaySoundEffectEvent {
                         sound_effect_type: SoundEffectType::BulletDing,
                     });
                     if mob_query.contains(*mob_entity) && *projectile_damage > 0 {
-                        damage_dealt_event_writer.send(DamageDealtEvent {
+                        damage_dealt_event_writer.write(DamageDealtEvent {
                             damage: *projectile_damage,
                             target: *mob_entity,
                         });
@@ -217,24 +214,22 @@ fn deal_damage_on_contact(
                 mob_segment_faction,
                 projectile_faction,
                 projectile_damage,
-            } => {
-                if projectile == *projectile_entity
-                    && !match mob_segment_faction {
-                        Faction::Ally => matches!(projectile_faction, Faction::Ally),
-                        Faction::Enemy => matches!(projectile_faction, Faction::Enemy),
-                        Faction::Neutral => matches!(projectile_faction, Faction::Neutral),
-                    }
-                {
-                    // deal damage to mob
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
-                        sound_effect_type: SoundEffectType::BulletDing,
+            } if projectile == *projectile_entity
+                && !match mob_segment_faction {
+                    Faction::Ally => matches!(projectile_faction, Faction::Ally),
+                    Faction::Enemy => matches!(projectile_faction, Faction::Enemy),
+                    Faction::Neutral => matches!(projectile_faction, Faction::Neutral),
+                } =>
+            {
+                // deal damage to mob
+                sound_effect_event_writer.write(PlaySoundEffectEvent {
+                    sound_effect_type: SoundEffectType::BulletDing,
+                });
+                if mob_segment_query.contains(*mob_segment_entity) && *projectile_damage > 0 {
+                    damage_dealt_event_writer.write(DamageDealtEvent {
+                        damage: *projectile_damage,
+                        target: *mob_segment_entity,
                     });
-                    if mob_segment_query.contains(*mob_segment_entity) && *projectile_damage > 0 {
-                        damage_dealt_event_writer.send(DamageDealtEvent {
-                            damage: *projectile_damage,
-                            target: *mob_segment_entity,
-                        });
-                    }
                 }
             }
             _ => {}
@@ -249,8 +244,8 @@ fn deal_damage_on_intersection(
     player_query: &Query<(Entity, &PlayerComponent)>,
     mob_query: &Query<(Entity, &MobComponent)>,
     mob_segment_query: &Query<(Entity, &MobSegmentComponent)>,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
-    damage_dealt_event_writer: &mut EventWriter<DamageDealtEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
+    damage_dealt_event_writer: &mut MessageWriter<DamageDealtEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -266,11 +261,11 @@ fn deal_damage_on_intersection(
                     && *projectile_damage > 0
                 {
                     // deal damage to player
-                    damage_dealt_event_writer.send(DamageDealtEvent {
+                    damage_dealt_event_writer.write(DamageDealtEvent {
                         damage: *projectile_damage,
                         target: *player_entity,
                     });
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
+                    sound_effect_event_writer.write(PlaySoundEffectEvent {
                         sound_effect_type: SoundEffectType::PlayerHit,
                     });
                 }
@@ -290,7 +285,7 @@ fn deal_damage_on_intersection(
                     && *projectile_damage > 0
                 {
                     // deal damage to mob
-                    damage_dealt_event_writer.send(DamageDealtEvent {
+                    damage_dealt_event_writer.write(DamageDealtEvent {
                         damage: *projectile_damage,
                         target: *mob_entity,
                     });
@@ -302,18 +297,16 @@ fn deal_damage_on_intersection(
                 mob_segment_faction,
                 projectile_faction,
                 projectile_damage,
-            } => {
-                if projectile == *projectile_entity
-                    && mob_segment_faction != projectile_faction
-                    && mob_segment_query.contains(*mob_segment_entity)
-                    && *projectile_damage > 0
-                {
-                    // deal damage to mob
-                    damage_dealt_event_writer.send(DamageDealtEvent {
-                        damage: *projectile_damage,
-                        target: *mob_segment_entity,
-                    });
-                }
+            } if projectile == *projectile_entity
+                && mob_segment_faction != projectile_faction
+                && mob_segment_query.contains(*mob_segment_entity)
+                && *projectile_damage > 0 =>
+            {
+                // deal damage to mob
+                damage_dealt_event_writer.write(DamageDealtEvent {
+                    damage: *projectile_damage,
+                    target: *mob_segment_entity,
+                });
             }
             _ => {}
         }
@@ -326,8 +319,8 @@ fn explode_on_intersection(
     projectile: Entity,
     transform: &Transform,
     collision_events: &[&SortedCollisionEvent],
-    spawn_effect_event_writer: &mut EventWriter<SpawnEffectEvent>,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+    spawn_effect_event_writer: &mut MessageWriter<SpawnEffectEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -341,7 +334,7 @@ fn explode_on_intersection(
                     && matches!(*projectile_faction, Faction::Neutral | Faction::Enemy)
                 {
                     // spawn explosion
-                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                    spawn_effect_event_writer.write(SpawnEffectEvent {
                         effect_type: EffectType::EnemyBlastExplosion,
                         transform: Transform {
                             translation: transform.translation,
@@ -352,7 +345,7 @@ fn explode_on_intersection(
                     });
 
                     // despawn blast
-                    commands.entity(projectile).despawn_recursive();
+                    commands.entity(projectile).despawn();
                 }
             }
 
@@ -371,13 +364,13 @@ fn explode_on_intersection(
                         Faction::Neutral => matches!(projectile_faction, Faction::Neutral),
                     }
                 {
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
+                    sound_effect_event_writer.write(PlaySoundEffectEvent {
                         sound_effect_type: SoundEffectType::MobHit,
                     });
                     match projectile_faction {
                         Faction::Ally => {
                             // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
+                            spawn_effect_event_writer.write(SpawnEffectEvent {
                                 effect_type: EffectType::AllyBlastExplosion,
                                 transform: Transform {
                                     translation: transform.translation,
@@ -389,7 +382,7 @@ fn explode_on_intersection(
                         }
                         Faction::Enemy => {
                             // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
+                            spawn_effect_event_writer.write(SpawnEffectEvent {
                                 effect_type: EffectType::EnemyBlastExplosion,
                                 transform: Transform {
                                     translation: transform.translation,
@@ -403,7 +396,7 @@ fn explode_on_intersection(
                     }
 
                     // despawn blast
-                    commands.entity(projectile).despawn_recursive();
+                    commands.entity(projectile).despawn();
                 }
             }
             SortedCollisionEvent::MobSegmentToProjectileIntersection {
@@ -412,48 +405,46 @@ fn explode_on_intersection(
                 mob_segment_faction,
                 projectile_faction,
                 projectile_damage: _,
-            } => {
-                if projectile == *projectile_entity
-                    && !match mob_segment_faction {
-                        Faction::Ally => matches!(projectile_faction, Faction::Ally),
-                        Faction::Enemy => matches!(projectile_faction, Faction::Enemy),
-                        Faction::Neutral => matches!(projectile_faction, Faction::Neutral),
+            } if projectile == *projectile_entity
+                && !match mob_segment_faction {
+                    Faction::Ally => matches!(projectile_faction, Faction::Ally),
+                    Faction::Enemy => matches!(projectile_faction, Faction::Enemy),
+                    Faction::Neutral => matches!(projectile_faction, Faction::Neutral),
+                } =>
+            {
+                sound_effect_event_writer.write(PlaySoundEffectEvent {
+                    sound_effect_type: SoundEffectType::MobHit,
+                });
+                match projectile_faction {
+                    Faction::Ally => {
+                        // spawn explosion
+                        spawn_effect_event_writer.write(SpawnEffectEvent {
+                            effect_type: EffectType::AllyBlastExplosion,
+                            transform: Transform {
+                                translation: transform.translation,
+                                scale: transform.scale,
+                                ..Default::default()
+                            },
+                            ..default()
+                        });
                     }
-                {
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
-                        sound_effect_type: SoundEffectType::MobHit,
-                    });
-                    match projectile_faction {
-                        Faction::Ally => {
-                            // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
-                                effect_type: EffectType::AllyBlastExplosion,
-                                transform: Transform {
-                                    translation: transform.translation,
-                                    scale: transform.scale,
-                                    ..Default::default()
-                                },
-                                ..default()
-                            });
-                        }
-                        Faction::Enemy => {
-                            // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
-                                effect_type: EffectType::EnemyBlastExplosion,
-                                transform: Transform {
-                                    translation: transform.translation,
-                                    scale: transform.scale,
-                                    ..Default::default()
-                                },
-                                ..default()
-                            });
-                        }
-                        Faction::Neutral => {}
+                    Faction::Enemy => {
+                        // spawn explosion
+                        spawn_effect_event_writer.write(SpawnEffectEvent {
+                            effect_type: EffectType::EnemyBlastExplosion,
+                            transform: Transform {
+                                translation: transform.translation,
+                                scale: transform.scale,
+                                ..Default::default()
+                            },
+                            ..default()
+                        });
                     }
-
-                    // despawn blast
-                    commands.entity(projectile).despawn_recursive();
+                    Faction::Neutral => {}
                 }
+
+                // despawn blast
+                commands.entity(projectile).despawn();
             }
             _ => {}
         }
@@ -466,8 +457,8 @@ fn explode_on_contact(
     projectile: Entity,
     transform: &Transform,
     collision_events: &[&SortedCollisionEvent],
-    spawn_effect_event_writer: &mut EventWriter<SpawnEffectEvent>,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+    spawn_effect_event_writer: &mut MessageWriter<SpawnEffectEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -481,7 +472,7 @@ fn explode_on_contact(
                     && matches!(*projectile_faction, Faction::Neutral | Faction::Enemy)
                 {
                     // spawn explosion
-                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                    spawn_effect_event_writer.write(SpawnEffectEvent {
                         effect_type: EffectType::EnemyBulletExplosion,
                         transform: Transform {
                             translation: transform.translation,
@@ -492,7 +483,7 @@ fn explode_on_contact(
                     });
 
                     // despawn blast
-                    commands.entity(projectile).despawn_recursive();
+                    commands.entity(projectile).despawn();
 
                     continue;
                 }
@@ -507,13 +498,13 @@ fn explode_on_contact(
                 projectile_source: _,
             } => {
                 if projectile == *projectile_entity {
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
+                    sound_effect_event_writer.write(PlaySoundEffectEvent {
                         sound_effect_type: SoundEffectType::MobHit,
                     });
                     match projectile_faction {
                         Faction::Ally => {
                             // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
+                            spawn_effect_event_writer.write(SpawnEffectEvent {
                                 effect_type: EffectType::AllyBulletExplosion,
                                 transform: Transform {
                                     translation: transform.translation,
@@ -525,7 +516,7 @@ fn explode_on_contact(
                         }
                         Faction::Enemy => {
                             // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
+                            spawn_effect_event_writer.write(SpawnEffectEvent {
                                 effect_type: EffectType::EnemyBulletExplosion,
                                 transform: Transform {
                                     translation: transform.translation,
@@ -539,7 +530,7 @@ fn explode_on_contact(
                     }
 
                     // despawn blast
-                    commands.entity(projectile).despawn_recursive();
+                    commands.entity(projectile).despawn();
                     continue;
                 }
             }
@@ -552,13 +543,13 @@ fn explode_on_contact(
                 projectile_damage: _,
             } => {
                 if projectile == *projectile_entity {
-                    sound_effect_event_writer.send(PlaySoundEffectEvent {
+                    sound_effect_event_writer.write(PlaySoundEffectEvent {
                         sound_effect_type: SoundEffectType::MobHit,
                     });
                     match projectile_faction {
                         Faction::Ally => {
                             // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
+                            spawn_effect_event_writer.write(SpawnEffectEvent {
                                 effect_type: EffectType::AllyBulletExplosion,
                                 transform: Transform {
                                     translation: transform.translation,
@@ -570,7 +561,7 @@ fn explode_on_contact(
                         }
                         Faction::Enemy => {
                             // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
+                            spawn_effect_event_writer.write(SpawnEffectEvent {
                                 effect_type: EffectType::EnemyBulletExplosion,
                                 transform: Transform {
                                     translation: transform.translation,
@@ -584,7 +575,7 @@ fn explode_on_contact(
                     }
 
                     // despawn blast
-                    commands.entity(projectile).despawn_recursive();
+                    commands.entity(projectile).despawn();
                     continue;
                 }
             }
@@ -592,41 +583,39 @@ fn explode_on_contact(
             SortedCollisionEvent::ProjectileToProjectileContact {
                 projectile_entity_1,
                 projectile_faction_1,
-            } => {
-                if projectile == *projectile_entity_1 {
-                    //audio_channel.play(audio_assets.mob_hit.clone());
-                    match projectile_faction_1 {
-                        Faction::Ally => {
-                            // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
-                                effect_type: EffectType::AllyBulletExplosion,
-                                transform: Transform {
-                                    translation: transform.translation,
-                                    scale: transform.scale,
-                                    ..Default::default()
-                                },
-                                ..default()
-                            });
-                        }
-                        Faction::Enemy => {
-                            // spawn explosion
-                            spawn_effect_event_writer.send(SpawnEffectEvent {
-                                effect_type: EffectType::EnemyBulletExplosion,
-                                transform: Transform {
-                                    translation: transform.translation,
-                                    scale: transform.scale,
-                                    ..Default::default()
-                                },
-                                ..default()
-                            });
-                        }
-                        Faction::Neutral => {}
+            } if projectile == *projectile_entity_1 => {
+                //audio_channel.play(audio_assets.mob_hit.clone());
+                match projectile_faction_1 {
+                    Faction::Ally => {
+                        // spawn explosion
+                        spawn_effect_event_writer.write(SpawnEffectEvent {
+                            effect_type: EffectType::AllyBulletExplosion,
+                            transform: Transform {
+                                translation: transform.translation,
+                                scale: transform.scale,
+                                ..Default::default()
+                            },
+                            ..default()
+                        });
                     }
-
-                    // despawn blast
-                    commands.entity(projectile).despawn_recursive();
-                    continue;
+                    Faction::Enemy => {
+                        // spawn explosion
+                        spawn_effect_event_writer.write(SpawnEffectEvent {
+                            effect_type: EffectType::EnemyBulletExplosion,
+                            transform: Transform {
+                                translation: transform.translation,
+                                scale: transform.scale,
+                                ..Default::default()
+                            },
+                            ..default()
+                        });
+                    }
+                    Faction::Neutral => {}
                 }
+
+                // despawn blast
+                commands.entity(projectile).despawn();
+                continue;
             }
             _ => {}
         }

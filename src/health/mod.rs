@@ -1,7 +1,7 @@
 //! Exposes a plugin that changes a player/mob's health and shields based on time and events
 use crate::spawnable::SpawnEffectEvent;
 use bevy::prelude::{
-    App, Entity, EventReader, EventWriter, Plugin, Query, Res, Time, Transform, Update,
+    App, Entity, MessageReader, MessageWriter, Plugin, Query, Res, Time, Transform, Update,
 };
 use thetawave_interface::{
     health::{DamageDealtEvent, HealthComponent},
@@ -12,7 +12,7 @@ pub(super) struct HealthPlugin;
 
 impl Plugin for HealthPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<DamageDealtEvent>()
+        app.add_message::<DamageDealtEvent>()
             .add_systems(Update, (damage_system, regenerate_shields_system));
     }
 }
@@ -26,9 +26,9 @@ fn regenerate_shields_system(mut health_query: Query<&mut HealthComponent>, time
 
 /// Receive damage dealt events, apply damage, and spawn effects
 fn damage_system(
-    mut damage_dealt_events: EventReader<DamageDealtEvent>,
+    mut damage_dealt_events: MessageReader<DamageDealtEvent>,
     mut health_query: Query<(Entity, &Transform, &mut HealthComponent)>,
-    mut spawn_effect_event_writer: EventWriter<SpawnEffectEvent>,
+    mut spawn_effect_event_writer: MessageWriter<SpawnEffectEvent>,
 ) {
     for event in damage_dealt_events.read() {
         if let Ok((_entity, transform, mut health_component)) = health_query.get_mut(event.target) {
@@ -36,7 +36,7 @@ fn damage_system(
             health_component.take_damage(event.damage);
 
             // spawn damage dealt text effect
-            spawn_effect_event_writer.send(SpawnEffectEvent {
+            spawn_effect_event_writer.write(SpawnEffectEvent {
                 effect_type: EffectType::Text(TextEffectType::DamageDealt),
                 transform: Transform {
                     translation: transform.translation,

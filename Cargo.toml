@@ -1,121 +1,65 @@
+# Ported real-world Leafwing fixture (thetawave, upstream commit
+# 94fad04). This tree lives in the bevy-0.20 branch of the fork and
+# is extracted WHOLESALE into fixtures/thetawave/ by
+# scripts/fetch_bevy_examples.sh at a pinned commit SHA — the tree
+# IS the fixture, so it is never regenerated or re-transformed by
+# the fetch loop; changes belong on this branch, followed by a pin
+# bump in the script.
 [package]
-name = "thetawave"
-version = "0.1.1"
+name = "fixture_thetawave"
+version = "0.1.0"
 edition = "2021"
+publish = false
 
-[workspace]
-members = [
-    "crates/thetawave_interface",
-    "crates/thetawave_storage",
-    "crates/thetawave_arcade",
-    "crates/thetawave_assets",
+[lints.rust]
+# Upstream game code pokes these cfgs; expected, not an error.
+unexpected_cfgs = { level = "allow" }
+
+[features]
+playtest = [
+    "dep:bevy_playtest",
+    "bevy_playtest/takeover",
+    "bevy_playtest/takeover-winit",
+    # Declared-tier discovery runs against this fixture: the whole
+    # point is exercising the LW reader/tap/reconcile lens on a real
+    # game's InputMaps.
+    "bevy_playtest/lw-reader",
 ]
+# Arcade serial-port hardware support was removed (hardware
+# dongles; `bevy_serialport` has no Bevy-0.20-compatible release).
+# Local sqlite persistence (thetawave_storage) is KEPT as an
+# off-by-default `storage` feature — upstream parity; excluded from
+# the playtest battery.
+default = []
+storage = ["thetawave_storage"]
 
-[workspace.dependencies]
-serde = "1.0.159"
-strum = "0.25.0"
-strum_macros = "0.25.1"
-thiserror = "1.0"
-derive_more = "0.99.17"
-bevy_ecs_macros = "0.14.2"
-bevy_ecs = "0.14.2"
-bevy_reflect = "0.14.2"
-bevy_input = "0.14.2"
-bevy_state = "0.14.2"
-bevy_kira_audio = { version = "0.20.0", features = ["mp3", "wav"] }
-leafwing-input-manager = { git = "https://github.com/Leafwing-Studios/leafwing-input-manager.git", rev = "d32883661c72b4ff01be71ce65d9e9f2375d5f69" }
-ron = "0.8.0"
-bevy_time = "0.14.2"
-bevy_math = "0.14.2"
-# We value minimizing the binary sizes and keeping the CLI maximally simple over a more feature complete CLI library
-# like clap.
-argh = "0.1.12"
-rand = "0.8.5"
-console_error_panic_hook = "0.1.7"
-bevy_asset_loader = { version = "0.21.0", features = [
+[dependencies]
+bevy = "0.20.1"
+bevy_playtest = { path = "../..", optional = true }
+leafwing-input-manager = "0.22"
+bevy_rapier2d = "0.37"
+bevy_kira_audio = { version = "0.27", features = ["mp3", "wav"] }
+bevy_asset_loader = { version = "0.28", features = [
     "2d",
     "3d",
     "standard_dynamic_assets",
 ] }
+serde = { version = "1.0.159", features = ["derive"] }
+ron = "0.8.0"
+strum = "0.25.0"
+strum_macros = "0.25.1"
+thiserror = "1.0"
+derive_more = "0.99.17"
+rand = "0.8.5"
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Same winit as bevy_winit 0.20 uses; needed for the window icon.
+winit = "0.30"
 thetawave_interface = { path = "crates/thetawave_interface" }
-
-[workspace.dependencies.bevy]
-version = "0.14.2"
-default-features = false
-features = [
-    # Non-default/'extra' features features
-    "serialize",
-    # Part of bevy's default features
-    "animation",
-    "bevy_asset",
-    "bevy_audio",
-    "bevy_gilrs",
-    "bevy_scene",
-    "bevy_winit",
-    "bevy_core_pipeline",
-    "bevy_pbr",
-    "bevy_gltf",
-    "bevy_render",
-    "bevy_sprite",
-    "bevy_text",
-    "bevy_ui",
-    "hdr",
-    "ktx2",
-    "tonemapping_luts",
-    "multi_threaded",
-    "png",
-    "x11",
-    "bevy_gizmos",
-    "webgl2",
-    "zstd",
-]
+thetawave_assets = { path = "crates/thetawave_assets" }
+thetawave_storage = { path = "crates/thetawave_storage", optional = true }
 
 [dev-dependencies]
+# Self-dependency: activates OUR OWN `playtest` feature only for
+# test/example/bench builds. Normal & release builds stay clean.
+fixture_thetawave = { path = ".", features = ["playtest"] }
 rstest = "0.18.2"
-assert_cmd = "2.0.12"
-
-[dependencies]
-bevy = { workspace = true }
-bevy_rapier2d = { version = "0.27.0", features = [
-    "simd-stable",
-    "debug-render-2d",
-] }
-bevy_asset_loader = { workspace = true }
-serde = { workspace = true }
-strum = { workspace = true }
-strum_macros = { workspace = true }
-ron = { workspace = true }
-rand = { workspace = true }
-bevy_kira_audio = { workspace = true }
-winit = "0.30.3"
-image = "0.24.6"
-thiserror = { workspace = true }
-leafwing-input-manager = { workspace = true }
-thetawave_interface = { workspace = true }
-thetawave_assets = { path = "crates/thetawave_assets" }
-
-
-# Serial ports do not work in in the browser.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-thetawave_storage = { path = "crates/thetawave_storage", optional = true }
-thetawave_arcade = { path = "crates/thetawave_arcade", optional = true }
-argh = { workspace = true, optional = true }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = { workspace = true }
-
-# optimize dev packages as we don't need them in debug version
-[profile.dev.package."*"]
-opt-level = 3
-
-[profile.dev]
-opt-level = 1
-
-# For bevy-rapier2d
-[profile.release]
-codegen-units = 1
-
-[features]
-arcade = ["thetawave_arcade"]
-storage = ["thetawave_storage"]
-cli = ["argh"]

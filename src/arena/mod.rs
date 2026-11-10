@@ -4,7 +4,7 @@
 use barrier::spawn_barriers_system;
 use bevy::{
     app::{App, Plugin, Update},
-    prelude::{in_state, IntoSystemConfigs, OnEnter},
+    prelude::{in_state, IntoScheduleConfigs, OnEnter},
 };
 use thetawave_interface::{objective::MobReachedBottomGateEvent, states};
 mod barrier;
@@ -22,7 +22,7 @@ pub(super) struct ArenaPlugin;
 
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<MobReachedBottomGateEvent>();
+        app.add_message::<MobReachedBottomGateEvent>();
 
         app.add_systems(
             OnEnter(states::AppStates::Game),

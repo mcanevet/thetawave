@@ -1,7 +1,7 @@
 use bevy::{
     asset::Handle,
     prelude::{Image, Res, Resource},
-    sprite::TextureAtlasLayout,
+    image::TextureAtlasLayout,
 };
 use bevy_asset_loader::asset_collection::AssetCollection;
 use thetawave_interface::spawnable::ConsumableType;

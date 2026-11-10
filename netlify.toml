@@ -1,5 +1,0 @@
-# Netlify will look for assets it has, then fall back to the other asset server. More and more things will go in the
-# asset server/s3 over time. https://docs.netlify.com/routing/redirects/
-[[redirects]]
-from = "/assets/*"
-to = "https://assets.thetawave.metalmancy.tech/free_assets/:splat"

@@ -2,7 +2,7 @@
 //! and dying.
 use bevy::{
     app::{App, Plugin, Update},
-    ecs::schedule::IntoSystemConfigs,
+    ecs::schedule::IntoScheduleConfigs,
     state::{
         condition::in_state,
         state::{OnEnter, OnExit},
@@ -45,7 +45,7 @@ pub(super) struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<PlayerAction>::default());
-        app.add_event::<ActivateAbilityEvent>();
+        app.add_message::<ActivateAbilityEvent>();
 
         app.insert_resource(
             from_bytes::<CharactersResource>(include_bytes!("../../assets/data/characters.ron"))

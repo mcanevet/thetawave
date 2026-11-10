@@ -7,10 +7,9 @@ pub mod upgrades;
 use crate::{game::GameParametersResource, spawnable::SpawnEffectEvent};
 
 use bevy::ecs::entity::Entity;
-use bevy::ecs::event::EventWriter;
+use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::With;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
-use bevy::hierarchy::DespawnRecursiveExt;
 use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::utils::default;
@@ -25,15 +24,15 @@ use super::PlayersResource;
 /// Handle player reaching zero health
 pub(super) fn player_death_system(
     mut commands: Commands,
-    mut effect_event_writer: EventWriter<SpawnEffectEvent>,
+    mut effect_event_writer: MessageWriter<SpawnEffectEvent>,
     player_query: Query<(Entity, &Transform, &HealthComponent), With<PlayerComponent>>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
     game_parameters: Res<GameParametersResource>,
-    mut run_end_event_writer: EventWriter<RunEndEvent>,
+    mut run_end_event_writer: MessageWriter<RunEndEvent>,
 ) {
     // end the game if no players are alive
     if player_query.iter().count() == 0 {
-        run_end_event_writer.send(RunEndEvent {
+        run_end_event_writer.write(RunEndEvent {
             outcome: RunOutcomeType::Defeat(RunDefeatType::PlayersDestroyed),
         });
     }
@@ -42,10 +41,10 @@ pub(super) fn player_death_system(
     for (entity, transform, health) in player_query.iter() {
         if health.is_dead() {
             // despawn the player
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
 
             // spawn explosion effect
-            effect_event_writer.send(SpawnEffectEvent {
+            effect_event_writer.write(SpawnEffectEvent {
                 effect_type: EffectType::MobExplosion,
                 transform: Transform {
                     translation: transform.translation,
@@ -60,7 +59,7 @@ pub(super) fn player_death_system(
             });
 
             // play explosion sound effect
-            sound_effect_event_writer.send(PlaySoundEffectEvent {
+            sound_effect_event_writer.write(PlaySoundEffectEvent {
                 sound_effect_type: SoundEffectType::PlayerExplosion,
             });
         }

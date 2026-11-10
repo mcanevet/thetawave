@@ -27,7 +27,7 @@ pub struct ItemPlugin;
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((ItemSpawnPlugin, ItemBehaviorPlugin))
-            .add_event::<SpawnItemEvent>()
+            .add_message::<SpawnItemEvent>()
             .insert_resource(ItemResource {
                 items: from_bytes::<HashMap<ItemType, ItemData>>(include_bytes!(
                     "../../../assets/data/items.ron"

@@ -42,7 +42,7 @@ fn flush_mobs_killed_for_completed_games_counters_to_db(
     );
     if let Some(mob_kills) = (**mobs_killed_for_current_game).get(&DEFAULT_USER_ID) {
         for (mob_type, n_killed) in mob_kills {
-            set_mob_killed_count_for_user(DEFAULT_USER_ID, &mob_type, n_killed.clone())
+            set_mob_killed_count_for_user(DEFAULT_USER_ID, mob_type, *n_killed)
                 .unwrap_or_else(|e| error!("Error incrementing mob kill count: {e}"));
         }
     }
@@ -128,7 +128,7 @@ mod test {
 
     fn run_with_patched_env<T, V>(test: T, env_vars: Vec<(V, V)>)
     where
-        T: FnOnce() -> () + std::panic::UnwindSafe,
+        T: FnOnce() + std::panic::UnwindSafe,
         V: AsRef<OsStr>,
     {
         let old_env_vars: Vec<(OsString, OsString)> = env_vars
@@ -164,9 +164,6 @@ mod test {
         )
     }
 
-    fn set_loading_assets(mut s: ResMut<NextState<AppStates>>) {
-        (*s).set(AppStates::LoadingAssets);
-    }
     fn set_game_state(mut s: ResMut<NextState<AppStates>>) {
         (*s).set(AppStates::Game);
     }
@@ -176,14 +173,6 @@ mod test {
 
     fn set_dummy_terminal_game_state(mut s: ResMut<NextState<AppStates>>) {
         (*s).set(AppStates::CharacterSelection);
-    }
-
-    fn clear_completed_games_metrics(
-        mut historical_games_shot_counts: ResMut<UserStatsByPlayerForCompletedGamesCache>,
-        mut historical_games_enemy_mob_kill_counts: ResMut<MobKillsByPlayerForCompletedGames>,
-    ) {
-        (**historical_games_shot_counts).clear();
-        (**historical_games_enemy_mob_kill_counts).clear();
     }
 
     fn set_n_drones_killed_for_p1_in_completed_games_cache<const N_DRONES: usize>(

@@ -1,7 +1,7 @@
 use crate::spawnable::{
     ConsumableComponent, MobComponent, MobSegmentComponent, ProjectileComponent,
 };
-use bevy::prelude::{debug, Entity, EventReader, EventWriter, Query, With};
+use bevy::prelude::{debug, Entity, MessageReader, MessageWriter, Query, With};
 use bevy_rapier2d::{prelude::CollisionEvent, rapier::prelude::CollisionEventFlags};
 use thetawave_interface::{
     player::PlayerComponent,
@@ -12,8 +12,8 @@ use super::{CollidingEntityPair, SortedCollisionEvent};
 
 /// Creates events from intersection (sensor) collisions
 pub(super) fn intersection_collision_system(
-    mut collision_event_writer: EventWriter<SortedCollisionEvent>,
-    mut collision_events: EventReader<CollisionEvent>,
+    mut collision_event_writer: MessageWriter<SortedCollisionEvent>,
+    mut collision_events: MessageReader<CollisionEvent>,
     player_query: Query<Entity, With<PlayerComponent>>,
     consumable_query: Query<Entity, With<ConsumableComponent>>,
     item_query: Query<Entity, With<ItemComponent>>,
@@ -55,11 +55,11 @@ pub(super) fn intersection_collision_system(
                 if let Ok((_projectile_entity, projectile_component)) =
                     projectile_query.get(colliding_entities.secondary)
                 {
-                    collision_event_writer.send(
+                    collision_event_writer.write(
                         SortedCollisionEvent::PlayerToProjectileIntersection {
                             player_entity: colliding_entities.primary,
                             projectile_entity: colliding_entities.secondary,
-                            projectile_faction: match projectile_component.projectile_type.clone() {
+                            projectile_faction: match projectile_component.projectile_type {
                                 ProjectileType::Blast(faction) => faction,
                                 ProjectileType::Bullet(faction) => faction,
                             },
@@ -70,7 +70,7 @@ pub(super) fn intersection_collision_system(
                 }
                 // check for player-consumable intersection
                 else if consumable_query.get(colliding_entities.secondary).is_ok() {
-                    collision_event_writer.send(
+                    collision_event_writer.write(
                         SortedCollisionEvent::PlayerToConsumableIntersection {
                             player_entity: colliding_entities.primary,
                             consumable_entity: colliding_entities.secondary,
@@ -80,7 +80,7 @@ pub(super) fn intersection_collision_system(
                 }
                 // check for player-item intersection
                 else if item_query.get(colliding_entities.secondary).is_ok() {
-                    collision_event_writer.send(SortedCollisionEvent::PlayerToItemIntersection {
+                    collision_event_writer.write(SortedCollisionEvent::PlayerToItemIntersection {
                         player_entity: colliding_entities.primary,
                         item_entity: colliding_entities.secondary,
                     });
@@ -95,7 +95,7 @@ pub(super) fn intersection_collision_system(
                 if let Ok((_projectile_entity, projectile_component)) =
                     projectile_query.get(colliding_entities.secondary)
                 {
-                    collision_event_writer.send(
+                    collision_event_writer.write(
                         SortedCollisionEvent::MobToProjectileIntersection {
                             projectile_source: projectile_component.source,
                             mob_entity: colliding_entities.primary,
@@ -105,7 +105,7 @@ pub(super) fn intersection_collision_system(
                                 MobType::Ally(_) => Faction::Ally,
                                 MobType::Neutral(_) => Faction::Neutral,
                             },
-                            projectile_faction: match projectile_component.projectile_type.clone() {
+                            projectile_faction: match projectile_component.projectile_type {
                                 ProjectileType::Blast(faction) => faction,
                                 ProjectileType::Bullet(faction) => faction,
                             },
@@ -123,7 +123,7 @@ pub(super) fn intersection_collision_system(
                 if let Ok((_projectile_entity, projectile_component)) =
                     projectile_query.get(colliding_entities.secondary)
                 {
-                    collision_event_writer.send(
+                    collision_event_writer.write(
                         SortedCollisionEvent::MobSegmentToProjectileIntersection {
                             mob_segment_entity: colliding_entities.primary,
                             projectile_entity: colliding_entities.secondary,
@@ -131,7 +131,7 @@ pub(super) fn intersection_collision_system(
                                 MobSegmentType::Neutral(_) => Faction::Neutral,
                                 MobSegmentType::Enemy(_) => Faction::Enemy,
                             },
-                            projectile_faction: match projectile_component.projectile_type.clone() {
+                            projectile_faction: match projectile_component.projectile_type {
                                 ProjectileType::Blast(faction) => faction,
                                 ProjectileType::Bullet(faction) => faction,
                             },

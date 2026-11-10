@@ -6,7 +6,7 @@ use crate::spawnable::effect::spawn::EffectSpawnPlugin;
 use bevy::{
     app::{App, Plugin},
     color::{Color, Srgba},
-    ecs::{component::Component, event::Event, system::Resource},
+    ecs::{component::Component, message::Message, resource::Resource},
     transform::components::Transform,
 };
 use ron::de::from_bytes;
@@ -29,7 +29,7 @@ pub struct EffectPlugin;
 impl Plugin for EffectPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((EffectBehaviorPlugin, EffectSpawnPlugin))
-            .add_event::<SpawnEffectEvent>()
+            .add_message::<SpawnEffectEvent>()
             .insert_resource(EffectsResource {
                 effects: from_bytes::<HashMap<EffectType, EffectData>>(include_bytes!(
                     "../../../assets/data/effects.ron"
@@ -120,7 +120,7 @@ pub struct TextEffectsResource {
 }
 
 /// Event for spawning effect
-#[derive(Event, Default)]
+#[derive(Message, Default)]
 pub struct SpawnEffectEvent {
     /// Type of the effect
     pub effect_type: EffectType,

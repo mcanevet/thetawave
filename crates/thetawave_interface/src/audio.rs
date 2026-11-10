@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy_ecs::prelude::Event;
+use bevy_ecs::prelude::Message;
 use serde::Deserialize;
 use strum_macros::Display;
 
@@ -44,7 +44,7 @@ pub enum CollisionSoundType {
     Normal,
 }
 
-#[derive(Event, Default)]
+#[derive(Message, Default)]
 pub struct ChangeBackgroundMusicEvent {
     /// Background music to change to, None will just stop the current music
     pub bg_music_type: Option<BGMusicType>,
@@ -56,7 +56,7 @@ pub struct ChangeBackgroundMusicEvent {
     pub fade_out: Option<Duration>,
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct PlaySoundEffectEvent {
     pub sound_effect_type: SoundEffectType,
 }

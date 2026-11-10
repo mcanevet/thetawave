@@ -7,15 +7,12 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
+        hierarchy::{ChildSpawnerCommands, Children},
         query::{Changed, With},
         system::{Commands, Query},
     },
-    hierarchy::{BuildChildren, ChildBuilder, Children, DespawnRecursiveExt},
-    render::texture::Image,
-    ui::{
-        node_bundles::{ImageBundle, NodeBundle},
-        FlexDirection, Style, UiRect, Val,
-    },
+    image::Image,
+    ui::{widget::ImageNode, BackgroundColor, FlexDirection, Node, UiRect, Val},
     utils::default,
 };
 use thetawave_assets::UiAssets;
@@ -107,7 +104,7 @@ impl PlayerIDComponentExt for PlayerIDComponent {
     }
 }
 
-impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
+impl PlayerUiChildBuilderExt for ChildSpawnerCommands<'_> {
     fn spawn_player_ui(
         &mut self,
         characters_res: &CharactersResource,
@@ -124,13 +121,10 @@ impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
                 .unwrap();
 
             // Parent player ui node
-            self.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Row,
-                    ..default()
-                },
+            self.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
                 ..default()
             })
             .insert(PlayerUi)
@@ -147,81 +141,71 @@ impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
     }
 
     fn spawn_inner_player_ui(&mut self, id: PlayerIDComponent) {
-        self.spawn(NodeBundle {
-            style: Style {
-                width: INNER_WIDTH,
-                height: Val::Percent(100.0),
-                padding: INNER_PADDING,
-                flex_direction: FlexDirection::ColumnReverse,
-                ..default()
-            },
+        self.spawn(Node {
+            width: INNER_WIDTH,
+            height: Val::Percent(100.0),
+            padding: INNER_PADDING,
+            flex_direction: FlexDirection::ColumnReverse,
             ..default()
         })
         .insert(PlayerInnerUi)
         .with_children(|inner| {
             inner
-                .spawn(NodeBundle {
-                    style: Style {
+                .spawn((
+                    Node {
                         width: Val::Percent(100.0),
                         height: HEALTH_HEIGHT,
                         flex_direction: FlexDirection::ColumnReverse,
                         ..default()
                     },
-                    background_color: HEALTH_COLOR.with_alpha(HEALTH_EMPTY_ALPHA).into(),
-                    ..default()
-                })
+                    BackgroundColor(HEALTH_COLOR.with_alpha(HEALTH_EMPTY_ALPHA).into()),
+                ))
                 .insert(HealthUi)
                 .with_children(|health| {
                     health
-                        .spawn(NodeBundle {
-                            style: Style {
+                        .spawn((
+                            Node {
                                 width: Val::Percent(100.0),
                                 height: Val::Percent(100.0),
                                 ..default()
                             },
-                            background_color: HEALTH_COLOR.with_alpha(HEALTH_FILLED_ALPHA).into(),
-                            ..default()
-                        })
+                            BackgroundColor(HEALTH_COLOR.with_alpha(HEALTH_FILLED_ALPHA).into()),
+                        ))
                         .insert(HealthValueUi)
                         .insert(id);
                 });
 
             inner
-                .spawn(NodeBundle {
-                    style: Style {
+                .spawn((
+                    Node {
                         width: Val::Percent(100.0),
                         height: SHIELDS_HEIGHT,
                         flex_direction: FlexDirection::ColumnReverse,
                         ..default()
                     },
-                    background_color: SHIELDS_COLOR.with_alpha(SHIELDS_EMPTY_ALPHA).into(),
-                    ..default()
-                })
+                    BackgroundColor(SHIELDS_COLOR.with_alpha(SHIELDS_EMPTY_ALPHA).into()),
+                ))
                 .insert(ShieldsUi)
                 .with_children(|shields_ui| {
                     shields_ui
-                        .spawn(NodeBundle {
-                            style: Style {
+                        .spawn((
+                            Node {
                                 width: Val::Percent(100.0),
                                 height: Val::Percent(100.0),
                                 ..default()
                             },
-                            background_color: SHIELDS_COLOR.with_alpha(SHIELDS_FILLED_ALPHA).into(),
-                            ..default()
-                        })
+                            BackgroundColor(SHIELDS_COLOR.with_alpha(SHIELDS_FILLED_ALPHA).into()),
+                        ))
                         .insert(ShieldsValueUi)
                         .insert(id);
                 });
 
             inner
-                .spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        height: ARMOR_HEIGHT,
-                        padding: ARMOR_PADDING,
-                        flex_direction: FlexDirection::ColumnReverse,
-                        ..default()
-                    },
+                .spawn(Node {
+                    width: Val::Percent(100.0),
+                    height: ARMOR_HEIGHT,
+                    padding: ARMOR_PADDING,
+                    flex_direction: FlexDirection::ColumnReverse,
                     ..default()
                 })
                 .insert(ArmorUi)
@@ -235,14 +219,11 @@ impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
         id: PlayerIDComponent,
         ui_assets: &UiAssets,
     ) {
-        self.spawn(NodeBundle {
-            style: Style {
-                width: OUTER_WIDTH,
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::ColumnReverse,
-                padding: OUTER_PADDING,
-                ..default()
-            },
+        self.spawn(Node {
+            width: OUTER_WIDTH,
+            height: Val::Percent(100.0),
+            flex_direction: FlexDirection::ColumnReverse,
+            padding: OUTER_PADDING,
             ..default()
         })
         .insert(PlayerOuterUi)
@@ -277,15 +258,17 @@ impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
     ) {
         let ability_slot_image = ui_assets.get_ability_slot_image(is_flipped).clone();
 
-        self.spawn(ImageBundle {
-            image: ability_slot_image.into(),
-            style: Style {
+        self.spawn((
+            ImageNode {
+                image: ability_slot_image,
+                ..default()
+            },
+            Node {
                 width: Val::Percent(100.0),
                 aspect_ratio: Some(1.0),
                 ..default()
             },
-            ..default()
-        })
+        ))
         .insert(AbilitySlotUi)
         .insert(ability_slot_id)
         .insert(player_id)
@@ -317,30 +300,28 @@ impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
         ability_slot_id: AbilitySlotIDComponent,
         image: Handle<Image>,
     ) {
-        self.spawn(ImageBundle {
-            image: image.into(),
-            style: Style {
+        self.spawn((
+            ImageNode { image, ..default() },
+            Node {
                 width: Val::Percent(100.0),
                 aspect_ratio: Some(1.0),
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            ..default()
-        })
+        ))
         .insert(AbilityIconUi)
         .insert(player_id)
         .insert(ability_slot_id)
         .with_children(|ability_icon| {
             ability_icon
-                .spawn(NodeBundle {
-                    style: Style {
+                .spawn((
+                    Node {
                         width: Val::Percent(100.0),
                         height: Val::Percent(100.0),
                         ..default()
                     },
-                    background_color: ABILITY_VALUE_COLOR.into(),
-                    ..default()
-                })
+                    BackgroundColor(ABILITY_VALUE_COLOR.into()),
+                ))
                 .insert(player_id)
                 .insert(ability_slot_id)
                 .insert(AbilityValueUi);
@@ -348,16 +329,15 @@ impl PlayerUiChildBuilderExt for ChildBuilder<'_> {
     }
 
     fn spawn_player_armor_counter_ui(&mut self) {
-        self.spawn(NodeBundle {
-            style: Style {
+        self.spawn((
+            Node {
                 width: Val::Percent(100.0),
                 aspect_ratio: ARMOR_COUNTER_ASPECT_RATIO,
                 margin: ARMOR_COUNTER_MARGIN,
                 ..default()
             },
-            background_color: ARMOR_COUNTER_COLOR.with_alpha(ARMOR_COUNTER_ALPHA).into(),
-            ..default()
-        })
+            BackgroundColor(ARMOR_COUNTER_COLOR.with_alpha(ARMOR_COUNTER_ALPHA).into()),
+        ))
         .insert(ArmorCounterUi);
     }
 }
@@ -366,7 +346,7 @@ pub(super) fn update_player_abilities_ui_system(
     player_query: Query<(&Children, &PlayerIDComponent), With<PlayerComponent>>,
     player_ability_query: Query<(&AbilityCooldownComponent, &AbilitySlotIDComponent)>,
     mut ability_ui_query: Query<
-        (&mut Style, &AbilitySlotIDComponent, &PlayerIDComponent),
+        (&mut Node, &AbilitySlotIDComponent, &PlayerIDComponent),
         With<AbilityValueUi>,
     >,
 ) {
@@ -392,7 +372,7 @@ pub(super) fn update_player_abilities_ui_system(
 /// Updates each player's health bar ui
 pub(super) fn update_player_health_ui_system(
     player_query: Query<(&HealthComponent, &PlayerIDComponent), Changed<HealthComponent>>,
-    mut health_ui: Query<(&mut Style, &PlayerIDComponent), With<HealthValueUi>>,
+    mut health_ui: Query<(&mut Node, &PlayerIDComponent), With<HealthValueUi>>,
 ) {
     for (player_health, player_id) in player_query.iter() {
         for (mut style, health_id) in health_ui.iter_mut() {
@@ -406,7 +386,7 @@ pub(super) fn update_player_health_ui_system(
 /// Updates each player's shields bar ui
 pub(super) fn update_player_shields_ui_system(
     player_query: Query<(&HealthComponent, &PlayerIDComponent), Changed<HealthComponent>>,
-    mut shields_ui: Query<(&mut Style, &PlayerIDComponent), With<ShieldsValueUi>>,
+    mut shields_ui: Query<(&mut Node, &PlayerIDComponent), With<ShieldsValueUi>>,
 ) {
     for (player_health, player_id) in player_query.iter() {
         for (mut style, shields_id) in shields_ui.iter_mut() {
@@ -427,7 +407,7 @@ pub(super) fn update_player_armor_ui_system(
         for (entity, armor_id) in armor_ui.iter() {
             if player_id == armor_id {
                 // spawn all of the existing child armor ticks
-                commands.entity(entity).despawn_descendants();
+                commands.entity(entity).despawn_children();
 
                 // spawn armor ticks
                 commands.entity(entity).with_children(|armor_ui| {

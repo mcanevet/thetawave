@@ -5,11 +5,11 @@ use crate::{
 };
 use bevy::{
     color::{Color, Srgba},
+    image::TextureAtlas,
     prelude::{
-        Commands, Component, Event, EventReader, Name, Res, Resource, Sprite, Timer, TimerMode,
+        Commands, Component, Message, MessageReader, Name, Res, Resource, Sprite, Timer, TimerMode,
         Transform, Vec2, Vec3,
     },
-    sprite::{SpriteBundle, TextureAtlas},
     utils::default,
 };
 use bevy_rapier2d::prelude::{ActiveEvents, Collider, LockedAxes, RigidBody, Sensor, Velocity};
@@ -51,7 +51,7 @@ pub struct ConsumableComponent {
 }
 
 /// Event for spawning a consumable
-#[derive(Event)]
+#[derive(Message)]
 pub struct SpawnConsumableEvent {
     /// Type of the consumable to spawn
     pub consumable_type: ConsumableType,
@@ -62,7 +62,7 @@ pub struct SpawnConsumableEvent {
 /// Handles spawning of consumables according to read events
 pub fn spawn_consumable_system(
     mut commands: Commands,
-    mut event_reader: EventReader<SpawnConsumableEvent>,
+    mut event_reader: MessageReader<SpawnConsumableEvent>,
     consumables_resource: Res<ConsumableResource>,
     consumable_assets: Res<ConsumableAssets>,
     game_parameters: Res<GameParametersResource>,
@@ -157,17 +157,14 @@ pub fn spawn_consumable(
 
     // spawn the consumable
     consumable
-        .insert(SpriteBundle {
-            sprite: Sprite {
-                color: consumable_data.affine_bloom_transformation(game_options.bloom_intensity),
-                ..Default::default()
-            },
-            texture: consumable_assets.get_image(consumable_type),
-            ..default()
-        })
-        .insert(TextureAtlas {
-            layout: consumable_assets.get_texture_atlas_layout(consumable_type),
-            ..default()
+        .insert(Sprite {
+            image: consumable_assets.get_image(consumable_type),
+            texture_atlas: Some(TextureAtlas {
+                layout: consumable_assets.get_texture_atlas_layout(consumable_type),
+                ..default()
+            }),
+            color: consumable_data.affine_bloom_transformation(game_options.bloom_intensity),
+            ..Default::default()
         })
         .insert(AnimationComponent {
             timer: Timer::from_seconds(

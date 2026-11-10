@@ -1,7 +1,7 @@
 use crate::character::{Character, CharacterType};
 use crate::spawnable::SpawnPosition;
-use bevy_ecs::system::Resource;
-use bevy_ecs::{bundle::Bundle, prelude::Component};
+use bevy_ecs::resource::Resource;
+use bevy_ecs::{bundle::Bundle, entity::Entity, prelude::Component};
 use bevy_math::Vec2;
 use derive_more::{Deref, DerefMut};
 
@@ -33,11 +33,11 @@ pub struct PlayerData {
 }
 
 /// Input method for a player
-/// Gamepad has a usize identifier
+/// Gamepad is represented by its entity (Bevy 0.20 gamepad model)
 #[derive(Clone, PartialEq, Debug, Copy)]
 pub enum PlayerInput {
     Keyboard,
-    Gamepad(usize),
+    Gamepad(Entity),
 }
 
 impl PlayersResource {

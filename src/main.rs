@@ -1,16 +1,34 @@
 #![doc = include_str!("../README.md")]
+// The playtest feature links the whole harness into the game binary,
+// which on macOS arm64 crosses ld's 16MB compact-unwind encoding
+// limit (performance-only note, unavoidable for a linked-in-harness
+// debug build).
+#![cfg_attr(feature = "playtest", allow(linker_messages))]
+// Vendored upstream style, kept as-is for the port (fork carries the
+// same decision): Bevy systems with many query/event parameters and
+// wide tupled queries are idiomatic in 0.14-era thetawave; refactoring
+// 15-argument systems would be invasive churn with no behavioral gain.
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+// Upstream enum shapes (Gain* consumable effects, timer-heavy
+// TutorialLesson/LevelPhaseType variants) are data-driven from RON;
+// boxing or renaming would churn serialized formats for style only.
+#![allow(clippy::enum_variant_names, clippy::large_enum_variant)]
 use bevy::app::PluginGroupBuilder;
+use bevy::light::{AmbientLight, GlobalAmbientLight};
 use bevy::prelude::{
-    AmbientLight, App, AppExtStates, AssetPlugin, ClearColor, Color, DefaultPlugins, ImagePlugin,
-    IntoSystemConfigs, OnEnter, PluginGroup, ResMut, SystemSet, Vec2, Window, WindowPlugin,
+    App, AppExtStates, AssetPlugin, ClearColor, Color, Commands, ImagePlugin, IntoScheduleConfigs,
+    OnEnter, PluginGroup, Query, SystemSet, Vec2, Window, WindowPlugin, With,
 };
 use bevy_kira_audio::prelude::AudioPlugin;
 
 use crate::options::display::DisplayConfig;
+use bevy_rapier2d::plugin::context::DefaultRapierContext;
 use bevy_rapier2d::prelude::{
     NoUserData, RapierConfiguration, RapierDebugRenderPlugin, RapierPhysicsPlugin, TimestepMode,
 };
-use options::{generate_config_files, GameInitCLIOptions};
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "playtest")))]
+use options::generate_config_files;
+use options::GameInitCLIOptions;
 use thetawave_interface::states::{AppStates, GameStates};
 
 /// Used by a physics engine to translate physics calculations to graphics
@@ -63,12 +81,23 @@ pub enum GameUpdateSet {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn get_display_config() -> DisplayConfig {
-    use ron::de::from_str;
-    use std::{env::current_dir, fs::read_to_string};
+    #[cfg(feature = "playtest")]
+    {
+        // Battery/robot runs are driven from arbitrary cwds; the committed
+        // default is baked in (mirrors the wasm path) instead of relying on
+        // `generate_config_files()` having run in the current directory.
+        ron::de::from_bytes(include_bytes!("options/display.ron")).unwrap()
+    }
+    #[cfg(not(feature = "playtest"))]
+    {
+        use ron::de::from_str;
+        use std::{env::current_dir, fs::read_to_string};
 
-    let config_path = current_dir().unwrap().join("config");
+        let config_path = current_dir().unwrap().join("config");
 
-    from_str::<DisplayConfig>(&read_to_string(config_path.join("display.ron")).unwrap()).unwrap()
+        from_str::<DisplayConfig>(&read_to_string(config_path.join("display.ron")).unwrap())
+            .unwrap()
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -82,11 +111,18 @@ fn get_display_config() -> DisplayConfig {
 
 /// The plugins we need that are "taken for granted" from the engine and basic rendering systems.
 /// Using a different `PluginGroupBuilder` is basically a different runtime for the game.
-fn our_default_plugins(
+///
+/// Generic over the base group: under `--features playtest` the base is
+/// `bevy_playtest::PlaytestDefaultPlugins` (a `DefaultPlugins` equivalent
+/// that drops `WinitPlugin`/`LogPlugin` under `BEVY_PLAYTEST_*` env vars so
+/// the fixture runs headless under takeover); the `.set()` customizations
+/// below apply to either.
+fn our_default_plugins<G: PluginGroup>(
+    group: G,
     display_config: DisplayConfig,
     opts: &options::GameInitCLIOptions,
 ) -> PluginGroupBuilder {
-    let res = DefaultPlugins
+    let res = group
         .set(WindowPlugin {
             primary_window: Some(Window::from(display_config)),
             ..Default::default()
@@ -104,25 +140,32 @@ fn our_default_plugins(
 
 #[allow(unused_variables, unused_mut)] // The options are only used on some platforms/with some installs
 fn our_game_plugins(opts: &GameInitCLIOptions) -> PluginGroupBuilder {
-    let mut res = ThetawaveGamePlugins.build();
-    #[cfg(feature = "arcade")]
-    {
-        if opts.arcade {
-            res = res.add(thetawave_arcade::arduino::ArcadeArduinoPlugin).add(
-                options::OptionsPlugin {
-                    arcade: opts.arcade,
-                },
-            );
-        }
-    }
-    res
+    ThetawaveGamePlugins.build()
 }
+#[cfg(feature = "playtest")]
+fn base_plugin_group() -> bevy_playtest::PlaytestDefaultPlugins {
+    bevy_playtest::PlaytestDefaultPlugins
+}
+#[cfg(not(feature = "playtest"))]
+fn base_plugin_group() -> bevy::DefaultPlugins {
+    bevy::DefaultPlugins
+}
+
+#[cfg(feature = "playtest")]
+fn playtest_plugins() -> (bevy_playtest::PlaytestPlugin,) {
+    (bevy_playtest::PlaytestPlugin,)
+}
+#[cfg(not(feature = "playtest"))]
+fn playtest_plugins() -> () {}
+
 fn main() {
     // pushes rust errors to the browser console
     #[cfg(target_arch = "wasm32")]
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-    #[cfg(not(target_arch = "wasm32"))]
+    // Playtest/battery runs bake the configs in (see `get_display_config` /
+    // `get_input_bindings`); normal native runs still confgen to `config/`.
+    #[cfg(all(not(target_arch = "wasm32"), not(feature = "playtest")))]
     generate_config_files();
 
     let display_config = get_display_config();
@@ -130,9 +173,13 @@ fn main() {
     let opts =
         options::GameInitCLIOptions::from_environ_on_supported_platforms_with_default_fallback();
     let mut app = build_app(
-        our_default_plugins(display_config, &opts),
+        our_default_plugins(base_plugin_group(), display_config, &opts),
         our_game_plugins(&opts),
     );
+
+    // Added last: the runner swap is last-set-wins, so `PlaytestPlugin`
+    // must come after every plugin group that might set a runner.
+    app.add_plugins(playtest_plugins());
 
     app.run();
 }
@@ -147,8 +194,13 @@ fn build_app<P1: PluginGroup, P2: PluginGroup>(base_plugins: P1, game_plugins: P
     app.init_state::<AppStates>() // start game in the main menu state
         .init_state::<GameStates>(); // start the game in playing state
     app.add_plugins(game_plugins);
-    app.insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(AmbientLight::default());
+    app.insert_resource(ClearColor(Color::BLACK));
+    // Bevy 0.20 port: ambient light is no longer a simple resource insert;
+    // tweak the `GlobalAmbientLight` resource installed by `LightPlugin`.
+    // Absent in minimal (render-less) test apps, hence the tolerant get.
+    if let Some(mut ambient) = app.world_mut().get_resource_mut::<GlobalAmbientLight>() {
+        ambient.brightness = AmbientLight::default().brightness;
+    }
 
     app.add_systems(
         OnEnter(AppStates::Game),
@@ -161,14 +213,21 @@ fn build_app<P1: PluginGroup, P2: PluginGroup>(base_plugins: P1, game_plugins: P
 }
 
 // setup rapier
-fn setup_physics(mut rapier_config: ResMut<RapierConfiguration>) {
-    rapier_config.timestep_mode = TimestepMode::Fixed {
+fn setup_physics(
+    mut commands: Commands,
+    mut rapier_config: Query<&mut RapierConfiguration, With<DefaultRapierContext>>,
+) {
+    // Bevy 0.20 / bevy_rapier 0.37 port: `timestep_mode` moved out of
+    // `RapierConfiguration` into its own resource, and `RapierConfiguration`
+    // became a component on the default rapier context entity.
+    commands.insert_resource(TimestepMode::Fixed {
         dt: 1.0 / 60.0,
         substeps: 1,
-    };
-    rapier_config.physics_pipeline_active = true;
-    rapier_config.query_pipeline_active = true;
-    rapier_config.gravity = Vec2::ZERO;
+    });
+    if let Ok(mut rapier_config) = rapier_config.single_mut() {
+        rapier_config.physics_pipeline_active = true;
+        rapier_config.gravity = Vec2::ZERO;
+    }
 }
 /// This is the main collection of features and behaviors that define thetawave. 99% of the total
 /// behavior of all executables comes from this and Bevy plugins. Ideally 100% of the functionality
@@ -201,10 +260,6 @@ impl PluginGroup for ThetawaveGamePlugins {
             .add(ui::UiPlugin)
             .add(options::OptionsPlugin::default())
             .add(audio::ThetawaveAudioPlugin);
-        #[cfg(feature = "arcade")]
-        {
-            res = res.add(thetawave_arcade::arduino::ArcadeArduinoPlugin);
-        }
         #[cfg(feature = "storage")]
         {
             res = res.add(thetawave_storage::plugin::DBPlugin);
@@ -265,7 +320,7 @@ mod test {
             .build()
             .add(AssetPlugin::default())
             .add(ImagePlugin::default())
-            .add(InputPlugin::default())
+            .add(InputPlugin)
             .add(StatesPlugin);
         // These features are basically untestable.
         let game_plugins = ThetawaveGamePlugins
@@ -283,8 +338,13 @@ mod test {
             .disable::<BackgroundPlugin>();
 
         let mut app = build_app(base_plugins, game_plugins);
-        app.add_event::<ChangeBackgroundMusicEvent>()
-            .add_event::<PlaySoundEffectEvent>();
+        // bevy_rapier2d 0.37 registers `propagate_parent_transforms`
+        // directly without init-ing `StaticTransformOptimizations`
+        // (normally done by bevy_transform's TransformPlugin, absent in
+        // this minimal render-less app). Supply it manually.
+        app.init_resource::<bevy::transform::systems::StaticTransformOptimizations>();
+        app.add_message::<ChangeBackgroundMusicEvent>()
+            .add_message::<PlaySoundEffectEvent>();
 
         app.insert_resource(GameOptions::default());
         app

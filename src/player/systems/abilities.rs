@@ -1,7 +1,7 @@
 use bevy::ecs::entity::Entity;
-use bevy::ecs::event::{EventReader, EventWriter};
+use bevy::ecs::hierarchy::Children;
+use bevy::ecs::message::{MessageReader, MessageWriter};
 use bevy::ecs::system::{Query, Res};
-use bevy::hierarchy::Children;
 use bevy::math::Vec2;
 use bevy::prelude::default;
 use bevy::time::{Time, Timer, TimerMode};
@@ -42,7 +42,7 @@ pub(in crate::player) fn player_ability_input_system(
         &Children,
     )>,
     mut ability_query: Query<(&mut AbilityCooldownComponent, &AbilitySlotIDComponent)>,
-    mut ability_event_writer: EventWriter<ActivateAbilityEvent>,
+    mut ability_event_writer: MessageWriter<ActivateAbilityEvent>,
 ) {
     for (action_state, player_damage, player_id, children) in player_input_query.iter() {
         for child in children {
@@ -50,7 +50,7 @@ pub(in crate::player) fn player_ability_input_system(
                 match ability_id {
                     AbilitySlotIDComponent::One => {
                         if action_state.pressed(&PlayerAction::SlotOneAbility)
-                            && ability_cooldown.cooldown_timer.finished()
+                            && ability_cooldown.cooldown_timer.is_finished()
                         {
                             ability_cooldown.cooldown_timer = Timer::from_seconds(
                                 ability_cooldown.base_cooldown_time
@@ -58,12 +58,12 @@ pub(in crate::player) fn player_ability_input_system(
                                 TimerMode::Once,
                             );
                             ability_event_writer
-                                .send(ActivateAbilityEvent::new(*player_id, *ability_id));
+                                .write(ActivateAbilityEvent::new(*player_id, *ability_id));
                         }
                     }
                     AbilitySlotIDComponent::Two => {
                         if action_state.pressed(&PlayerAction::SlotTwoAbility)
-                            && ability_cooldown.cooldown_timer.finished()
+                            && ability_cooldown.cooldown_timer.is_finished()
                         {
                             ability_cooldown.cooldown_timer = Timer::from_seconds(
                                 ability_cooldown.base_cooldown_time
@@ -71,7 +71,7 @@ pub(in crate::player) fn player_ability_input_system(
                                 TimerMode::Once,
                             );
                             ability_event_writer
-                                .send(ActivateAbilityEvent::new(*player_id, *ability_id));
+                                .write(ActivateAbilityEvent::new(*player_id, *ability_id));
                         }
                     }
                 }
@@ -94,8 +94,8 @@ pub(in crate::player) fn standard_weapon_ability_system(
         &Children,
     )>,
     ability_query: Query<(&AbilitySlotIDComponent, &StandardWeaponAbilityComponent)>,
-    mut ability_event_reader: EventReader<ActivateAbilityEvent>,
-    mut fire_weapon_event_writer: EventWriter<FireWeaponEvent>,
+    mut ability_event_reader: MessageReader<ActivateAbilityEvent>,
+    mut fire_weapon_event_writer: MessageWriter<FireWeaponEvent>,
 ) {
     for event in ability_event_reader.read() {
         for (
@@ -110,7 +110,7 @@ pub(in crate::player) fn standard_weapon_ability_system(
             for child in children.iter() {
                 if let Ok((ability_id, weapon)) = ability_query.get(*child) {
                     if event.player_id == *player_id && event.ability_slot_id == *ability_id {
-                        fire_weapon_event_writer.send(FireWeaponEvent {
+                        fire_weapon_event_writer.write(FireWeaponEvent {
                             weapon_projectile_data: WeaponProjectileData {
                                 ammunition: weapon.ammunition,
                                 damage: (weapon.damage_multiplier
@@ -132,7 +132,7 @@ pub(in crate::player) fn standard_weapon_ability_system(
                             source_transform: *player_transform,
                             source_entity: player_entity,
                             initial_motion: InitialMotion {
-                                linvel: Some(player_velocity.linvel),
+                                linvel: Some(player_velocity.linear),
                                 ..default()
                             },
                         });
@@ -156,7 +156,7 @@ pub(in crate::player) fn start_charge_ability_system(
         &Children,
     )>,
     mut ability_query: Query<(&AbilitySlotIDComponent, &mut ChargeAbilityComponent)>,
-    mut ability_event_reader: EventReader<ActivateAbilityEvent>,
+    mut ability_event_reader: MessageReader<ActivateAbilityEvent>,
 ) {
     for event in ability_event_reader.read() {
         for (
@@ -227,7 +227,7 @@ pub(in crate::player) fn update_charge_ability_system(
                 // when the action timer is completed reverse the damage reduction, enable movement
                 // set the velocity of the player to 0
                 if charge_ability.action_timer.just_finished() {
-                    player_velocity.linvel = Vec2::splat(0.0);
+                    player_velocity.linear = Vec2::splat(0.0);
                     player_movement.movement_enabled = true;
                     player_incoming_damage.multiplier += charge_ability.incoming_damage_multiplier;
                 }

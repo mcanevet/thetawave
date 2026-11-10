@@ -1,6 +1,6 @@
 use bevy::{
     app::{Plugin, Update},
-    ecs::schedule::IntoSystemConfigs,
+    ecs::schedule::IntoScheduleConfigs,
     prelude::{in_state, OnEnter},
 };
 use thetawave_interface::states;
@@ -18,7 +18,7 @@ pub(super) struct GameUiPlugin;
 
 impl Plugin for GameUiPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<border_gradient::BorderGradientEvent>();
+        app.add_message::<border_gradient::BorderGradientEvent>();
 
         app.add_systems(
             OnEnter(states::AppStates::Game),

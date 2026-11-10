@@ -1,7 +1,7 @@
 use crate::GameUpdateSet;
 use bevy::{
     app::{App, Plugin, Update},
-    prelude::{in_state, Entity, Event, IntoSystemConfigs},
+    prelude::{in_state, Entity, IntoScheduleConfigs, Message},
 };
 use bevy_rapier2d::geometry::Group;
 use contact::contact_collision_system;
@@ -25,7 +25,7 @@ pub struct CollisionPlugin;
 
 impl Plugin for CollisionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<SortedCollisionEvent>();
+        app.add_message::<SortedCollisionEvent>();
 
         app.add_systems(
             Update,
@@ -40,7 +40,7 @@ impl Plugin for CollisionPlugin {
 }
 
 /// Types of collisions
-#[derive(Debug, Event)]
+#[derive(Debug, Message)]
 pub enum SortedCollisionEvent {
     // Player
     PlayerToProjectileIntersection {

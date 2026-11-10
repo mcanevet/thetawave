@@ -1,10 +1,10 @@
 //! Exposes a plugin that logs whenever the user's mouse hovers over a mob.
 use bevy::{
+    log::debug,
     prelude::{
-        in_state, App, Entity, IntoSystemConfigs, Plugin, Query, Res, Transform, Update, Vec2,
+        in_state, App, Entity, IntoScheduleConfigs, Plugin, Query, Res, Transform, Update, Vec2,
         Vec3Swizzles, Window, With,
     },
-    utils::tracing::debug,
     window::PrimaryWindow,
 };
 use thetawave_interface::health::HealthComponent;
@@ -32,7 +32,7 @@ fn scanner_system(
     mob_query: Query<(Entity, &HealthComponent, &Transform), With<MobComponent>>,
 ) {
     // get the primary window
-    let primary_window = windows.get_single().unwrap();
+    let primary_window = windows.single().unwrap();
 
     // get the cursor position in the window
     if let Some(mouse_pos) = primary_window.cursor_position() {

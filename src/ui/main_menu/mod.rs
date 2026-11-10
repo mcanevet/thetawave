@@ -4,14 +4,14 @@ use crate::animation::{AnimationComponent, AnimationDirection};
 use bevy::{
     color::Srgba,
     ecs::{
-        event::EventWriter,
+        message::MessageWriter,
         system::{Commands, Res},
     },
-    hierarchy::BuildChildren,
-    prelude::{in_state, App, ImageBundle, IntoSystemConfigs, OnEnter, Plugin, Update},
-    sprite::TextureAtlas,
+    image::TextureAtlas,
+    prelude::{in_state, App, IntoScheduleConfigs, OnEnter, Plugin, Update},
     time::{Timer, TimerMode},
-    ui::{node_bundles::NodeBundle, AlignItems, FlexDirection, JustifyContent, Style, Val},
+    ui::widget::ImageNode,
+    ui::{AlignItems, BackgroundColor, FlexDirection, JustifyContent, Node, Val},
     utils::default,
 };
 use std::time::Duration;
@@ -31,8 +31,7 @@ impl Plugin for MainMenuUIPlugin {
         app.add_systems(OnEnter(AppStates::MainMenu), setup_main_menu_system)
             .add_systems(
                 Update,
-                (main_menu_button_selection_and_click_system,)
-                    .run_if(in_state(AppStates::MainMenu)),
+                main_menu_button_selection_and_click_system.run_if(in_state(AppStates::MainMenu)),
             );
     }
 }
@@ -42,12 +41,12 @@ impl Plugin for MainMenuUIPlugin {
 /// component is the main way to undo the side effects of this system.
 fn setup_main_menu_system(
     mut commands: Commands,
-    mut change_bg_music_event_writer: EventWriter<ChangeBackgroundMusicEvent>,
+    mut change_bg_music_event_writer: MessageWriter<ChangeBackgroundMusicEvent>,
     ui_assets: Res<UiAssets>,
 ) {
     let font = ui_assets.lunchds_font.clone();
 
-    change_bg_music_event_writer.send(ChangeBackgroundMusicEvent {
+    change_bg_music_event_writer.write(ChangeBackgroundMusicEvent {
         bg_music_type: Some(BGMusicType::Main),
         loop_from: Some(0.0),
         fade_in: Some(Duration::from_secs(2)),
@@ -55,59 +54,52 @@ fn setup_main_menu_system(
     });
 
     commands
-        .spawn(NodeBundle {
-            style: Style {
+        .spawn((
+            Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 ..Default::default()
             },
-            background_color: Srgba::new(0.0, 0.0, 0.0, 0.0).into(),
-            ..Default::default()
-        })
+            BackgroundColor(Srgba::new(0.0, 0.0, 0.0, 0.0).into()),
+        ))
         .insert(MainMenuCleanup)
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Column,
-                        height: Val::Percent(100.0),
-                        justify_content: JustifyContent::FlexStart,
-                        ..Default::default()
-                    },
-                    ..default()
+                .spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::FlexStart,
+                    ..Default::default()
                 })
                 .with_children(|parent| {
                     parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(50.0),
-                                flex_direction: FlexDirection::Column,
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
+                        .spawn(Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(50.0),
+                            flex_direction: FlexDirection::Column,
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             ..default()
                         })
                         .with_children(|parent| {
                             parent
                                 .spawn((
-                                    ImageBundle {
-                                        image: ui_assets.thetawave_logo_image.clone().into(),
-                                        style: Style {
-                                            max_width: Val::Px(900.0),
-                                            width: Val::Percent(70.0),
-                                            min_width: Val::Px(300.0),
-                                            aspect_ratio: Some(1920.0 / 1080.0),
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
+                                    ImageNode {
+                                        image: ui_assets.thetawave_logo_image.clone(),
+                                        texture_atlas: Some(TextureAtlas {
+                                            layout: ui_assets.thetawave_logo_layout.clone(),
                                             ..default()
-                                        },
+                                        }),
                                         ..default()
                                     },
-                                    TextureAtlas {
-                                        layout: ui_assets.thetawave_logo_layout.clone(),
+                                    Node {
+                                        max_width: Val::Px(900.0),
+                                        width: Val::Percent(70.0),
+                                        min_width: Val::Px(300.0),
+                                        aspect_ratio: Some(1920.0 / 1080.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },
                                 ))
@@ -117,15 +109,12 @@ fn setup_main_menu_system(
                                 });
                         });
                     parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(50.0),
-                                flex_direction: FlexDirection::Column,
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
+                        .spawn(Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(50.0),
+                            flex_direction: FlexDirection::Column,
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             ..default()
                         })
                         .with_children(|parent| {

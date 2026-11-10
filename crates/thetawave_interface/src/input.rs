@@ -1,6 +1,6 @@
 //! The structures used for knowing which player inputs from controller/keyboard+mouse/etc map to
 //! known game actions.
-use bevy_ecs::{component::Component, system::Resource};
+use bevy_ecs::{component::Component, resource::Resource};
 use bevy_reflect::Reflect;
 use leafwing_input_manager::{prelude::InputMap, Actionlike};
 use serde::Deserialize;

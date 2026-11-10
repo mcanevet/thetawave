@@ -1,16 +1,16 @@
 use crate::animation::AnimationComponent;
 use crate::GameUpdateSet;
 use bevy::app::{App, Plugin, Update};
-use bevy::asset::{Assets, Handle};
+use bevy::asset::Assets;
 use bevy::color::Alpha;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::event::EventReader;
-use bevy::ecs::schedule::IntoSystemConfigs;
+use bevy::ecs::message::MessageReader;
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res};
-use bevy::hierarchy::DespawnRecursiveExt;
-use bevy::sprite::{Sprite, TextureAtlas, TextureAtlasLayout};
+use bevy::image::TextureAtlasLayout;
+use bevy::sprite::{Sprite, Text2d};
 use bevy::state::condition::in_state;
-use bevy::text::Text;
+use bevy::text::TextColor;
 use bevy::time::{Stopwatch, Time, Timer, TimerMode};
 use serde::Deserialize;
 use thetawave_interface::animation::AnimationCompletedEvent;
@@ -81,47 +81,42 @@ impl From<EffectBehaviorData> for EffectBehavior {
 /// its last animation frame is complete.
 fn despawn_after_animation_effect_behavior_system(
     mut commands: Commands,
-    effect_query: Query<(
-        Entity,
-        &EffectComponent,
-        &TextureAtlas,
-        &AnimationComponent,
-        &Handle<TextureAtlasLayout>,
-    )>,
+    effect_query: Query<(Entity, &EffectComponent, &Sprite, &AnimationComponent)>,
     texture_atlas_layouts: Res<Assets<TextureAtlasLayout>>,
 ) {
     // Check if entity has  an `DespawnAfterAnimation` behavior
-    for (entity, effect_component, texture_atlas, animation, texture_atlas_layout_handle) in
-        effect_query.iter()
-    {
+    for (entity, effect_component, sprite, animation) in effect_query.iter() {
         if effect_component
             .behaviors
             .iter()
             .any(|behavior| matches!(behavior, EffectBehavior::DespawnAfterAnimation))
         {
             // Despawn effect entity after animation is complete
-            if let Some(texture_atlas_layout) =
-                texture_atlas_layouts.get(texture_atlas_layout_handle)
-            {
-                if texture_atlas.index == texture_atlas_layout.textures.len() - 1
-                    && animation.timer.just_finished()
+            // Bevy 0.20 port: the atlas lives on the `Sprite`, not as a component.
+            if let Some(texture_atlas) = sprite.texture_atlas.as_ref() {
+                if let Some(texture_atlas_layout) =
+                    texture_atlas_layouts.get(texture_atlas.layout.id())
                 {
-                    commands.entity(entity).despawn_recursive();
+                    if texture_atlas.index == texture_atlas_layout.textures.len() - 1
+                        && animation.timer.just_finished()
+                    {
+                        commands.entity(entity).despawn();
+                    }
                 }
             }
         }
     }
 }
 
-/// Checks if each effect entity with a `Text` component has a `FadeOut` behavior.
+/// Checks if each effect entity with a `Text2d` component has a `FadeOut` behavior.
 /// Recursively despawns the effect entities with this behavior after
 /// the timer is complete, while also fading out linearly based on the percent of time left in the timer.
 fn fade_out_text_effect_behavior_system(
     mut commands: Commands,
-    mut effect_query: Query<(Entity, &mut EffectComponent, &mut Text)>,
+    mut effect_query: Query<(Entity, &mut EffectComponent, &mut Text2d, &mut TextColor)>,
     time: Res<Time>,
 ) {
-    for (entity, mut effect_component, mut text) in effect_query.iter_mut() {
+    for (entity, mut effect_component, _text, mut text_color) in effect_query.iter_mut() {
         if let Some(timer) = effect_component.behaviors.iter_mut().find_map(|behavior| {
             if let EffectBehavior::FadeOut(timer) = behavior {
                 Some(timer)
@@ -133,16 +128,10 @@ fn fade_out_text_effect_behavior_system(
 
             // if the timer just completed, recursively despawn the effect entity, otherwise change the alpha
             if timer.just_finished() {
-                commands.entity(entity).despawn_recursive();
+                commands.entity(entity).despawn();
             } else {
-                // Set alpha in all sections in the text component
-                for color in text
-                    .sections
-                    .iter_mut()
-                    .map(|section| &mut section.style.color)
-                {
-                    color.set_alpha(timer.fraction_remaining());
-                }
+                // Fade the text color alpha out linearly
+                text_color.0.set_alpha(timer.fraction_remaining());
             }
         }
     }
@@ -168,7 +157,7 @@ fn fade_out_sprite_effect_behavior_system(
 
             // if the timer just completed, recursively despawn the effect entity, otherwise change the alpha
             if timer.just_finished() {
-                commands.entity(entity).despawn_recursive();
+                commands.entity(entity).despawn();
             } else {
                 sprite.color.set_alpha(timer.fraction_remaining());
             }
@@ -181,13 +170,12 @@ fn fade_out_sprite_effect_behavior_system(
 /// the animation is complete, while also fading out along an exponential decay curve.
 fn fade_out_despawn_after_animation_effect_behavior_system(
     mut commands: Commands,
-    mut animation_completed_event_reader: EventReader<AnimationCompletedEvent>,
+    mut animation_completed_event_reader: MessageReader<AnimationCompletedEvent>,
     mut effect_query: Query<(
         Entity,
         &mut EffectComponent,
         &mut Sprite,
         &AnimationComponent,
-        &TextureAtlas,
     )>,
     time: Res<Time>,
     texture_atlases: Res<Assets<TextureAtlasLayout>>,
@@ -195,11 +183,15 @@ fn fade_out_despawn_after_animation_effect_behavior_system(
     let animation_completed_events: Vec<&AnimationCompletedEvent> =
         animation_completed_event_reader.read().collect();
 
-    for (entity, mut effect_component, mut sprite, animation, texture_atlas) in
-        effect_query.iter_mut()
-    {
-        if let (Some(texture_atlas), Some(stopwatch)) = (
-            texture_atlases.get(texture_atlas.layout.id()),
+    for (entity, mut effect_component, mut sprite, animation) in effect_query.iter_mut() {
+        // Bevy 0.20 port: the atlas layout handle lives on the `Sprite`, not as a component.
+        let Some(texture_atlas_layout_handle) =
+            sprite.texture_atlas.as_ref().map(|a| a.layout.clone())
+        else {
+            continue;
+        };
+        if let (Some(texture_atlas_layout), Some(stopwatch)) = (
+            texture_atlases.get(texture_atlas_layout_handle.id()),
             effect_component.behaviors.iter_mut().find_map(|behavior| {
                 if let EffectBehavior::FadeOutAndDespawnAfterAnimation(stopwatch) = behavior {
                     Some(stopwatch)
@@ -210,13 +202,13 @@ fn fade_out_despawn_after_animation_effect_behavior_system(
         ) {
             // Despawn if the animation is completed, otherwise continue fading out
             if animation_completed_events.iter().any(|e| e.0 == entity) {
-                commands.entity(entity).despawn_recursive();
+                commands.entity(entity).despawn();
             } else {
                 stopwatch.tick(time.delta());
 
                 // Get the total animation time duration of a frame * the number of frames
-                let total_animation_time =
-                    animation.timer.duration().as_secs_f32() * texture_atlas.textures.len() as f32;
+                let total_animation_time = animation.timer.duration().as_secs_f32()
+                    * texture_atlas_layout.textures.len() as f32;
 
                 // Get an alpha value along an exponential decay curve
                 let elapsed_time = stopwatch.elapsed().as_secs_f32();

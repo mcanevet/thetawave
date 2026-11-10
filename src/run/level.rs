@@ -5,7 +5,7 @@ use crate::run::tutorial::modify_player_spawn_params_for_lesson_phase;
 use bevy::{
     log::info,
     math::Quat,
-    prelude::{EventReader, EventWriter, Query, ResMut, Resource, With},
+    prelude::{MessageReader, MessageWriter, Query, ResMut, Resource, With},
     time::{Stopwatch, Time, Timer},
 };
 use leafwing_input_manager::prelude::ActionState;
@@ -119,7 +119,7 @@ impl From<&LevelData> for Level {
 impl Level {
     pub fn cycle_phase(
         &mut self,
-        cycle_phase_event_writer: &mut EventWriter<CyclePhaseEvent>,
+        cycle_phase_event_writer: &mut MessageWriter<CyclePhaseEvent>,
     ) -> bool {
         // "clean up" the just completed phase & push it to the back of the queue to be replayed
         if let Some(current_phase) = &self.current_phase {
@@ -132,7 +132,7 @@ impl Level {
 
         info!("Phase cycled");
 
-        cycle_phase_event_writer.send(CyclePhaseEvent);
+        cycle_phase_event_writer.write(CyclePhaseEvent);
 
         // return true if no phase was available to cycle to the current phase
         self.current_phase.is_none()
@@ -140,13 +140,13 @@ impl Level {
 
     pub fn init_phase(
         &mut self,
-        change_bg_music_event_writer: &mut EventWriter<ChangeBackgroundMusicEvent>,
+        change_bg_music_event_writer: &mut MessageWriter<ChangeBackgroundMusicEvent>,
     ) {
         if let Some(current_phase) = &self.current_phase {
             if let Some(bg_music_transition) = &current_phase.bg_music_transition {
                 // change music
                 change_bg_music_event_writer
-                    .send(ChangeBackgroundMusicEvent::from(bg_music_transition));
+                    .write(ChangeBackgroundMusicEvent::from(bg_music_transition));
             }
         }
     }
@@ -156,16 +156,16 @@ impl Level {
         &mut self,
         time: &Time,
         player_query: &Query<&ActionState<PlayerAction>, With<PlayerComponent>>,
-        spawn_formation_event_writer: &mut EventWriter<SpawnFormationEvent>,
+        spawn_formation_event_writer: &mut MessageWriter<SpawnFormationEvent>,
         formations_res: &FormationPoolsResource,
-        spawn_mob_event_writer: &mut EventWriter<SpawnMobEvent>,
-        bosses_destroyed_event_reader: &mut EventReader<BossesDestroyedEvent>,
-        change_bg_music_event_writer: &mut EventWriter<ChangeBackgroundMusicEvent>,
-        cycle_phase_event_writer: &mut EventWriter<CyclePhaseEvent>,
-        mob_destroyed_event: &mut EventReader<MobDestroyedEvent>,
-        mob_reached_bottom_event: &mut EventReader<MobReachedBottomGateEvent>,
-        mob_segment_destroyed_event: &mut EventReader<MobSegmentDestroyedEvent>,
-        play_sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+        spawn_mob_event_writer: &mut MessageWriter<SpawnMobEvent>,
+        bosses_destroyed_event_reader: &mut MessageReader<BossesDestroyedEvent>,
+        change_bg_music_event_writer: &mut MessageWriter<ChangeBackgroundMusicEvent>,
+        cycle_phase_event_writer: &mut MessageWriter<CyclePhaseEvent>,
+        mob_destroyed_event: &mut MessageReader<MobDestroyedEvent>,
+        mob_reached_bottom_event: &mut MessageReader<MobReachedBottomGateEvent>,
+        mob_segment_destroyed_event: &mut MessageReader<MobSegmentDestroyedEvent>,
+        play_sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
         mut player_spawn_params: ResMut<InputRestrictionsAtSpawn>,
     ) -> bool {
         self.level_time.tick(time.delta());
@@ -197,7 +197,7 @@ impl Level {
                     spawn_timer,
                     ..
                 } => {
-                    if spawn_timer.finished() {
+                    if spawn_timer.is_finished() {
                         // check if no entities with a BossComponent tag exist
 
                         if bosses_destroyed_event_reader.is_empty() {
@@ -209,7 +209,7 @@ impl Level {
                     } else {
                         spawn_timer.tick(time.delta());
                         if spawn_timer.just_finished() {
-                            spawn_mob_event_writer.send(SpawnMobEvent {
+                            spawn_mob_event_writer.write(SpawnMobEvent {
                                 mob_type: mob_type.clone(),
                                 position: *position,
                                 rotation: Quat::default(),
@@ -223,7 +223,7 @@ impl Level {
                     tutorial_lesson, ..
                 } => {
                     modify_player_spawn_params_for_lesson_phase(
-                        &mut (*player_spawn_params),
+                        &mut player_spawn_params,
                         tutorial_lesson,
                     );
                     let finished_tutorial_section = tutorial_lesson.update(
@@ -267,7 +267,7 @@ impl Level {
     pub fn tick_spawn_timer(
         spawn_timer: &mut Timer,
         time: &Time,
-        spawn_formation_event_writer: &mut EventWriter<SpawnFormationEvent>,
+        spawn_formation_event_writer: &mut MessageWriter<SpawnFormationEvent>,
         formations_res: &FormationPoolsResource,
         formation_key: String,
     ) {
@@ -275,7 +275,7 @@ impl Level {
 
         if spawn_timer.just_finished() {
             if let Some(formation) = formations_res.get_random_formation(formation_key) {
-                spawn_formation_event_writer.send(SpawnFormationEvent {
+                spawn_formation_event_writer.write(SpawnFormationEvent {
                     formation: formation.clone(),
                 });
                 spawn_timer.set_duration(Duration::from_secs_f32(formation.period));

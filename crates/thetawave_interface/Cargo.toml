@@ -3,18 +3,19 @@ name = "thetawave_interface"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lints.rust]
+unexpected_cfgs = { level = "allow" }
 
 [dependencies]
-serde = { workspace = true }
-strum = { workspace = true }
-strum_macros = { workspace = true }
-derive_more = { workspace = true }
-bevy_ecs_macros = { workspace = true }
-bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
-leafwing-input-manager = { workspace = true }
-bevy_input = { workspace = true }
-bevy_time = { workspace = true }
-bevy_math = { workspace = true }
-bevy_state = { workspace = true }
+serde = { version = "1.0.159", features = ["derive"] }
+strum = "0.25.0"
+strum_macros = "0.25.1"
+derive_more = "0.99.17"
+bevy_ecs_macros = "0.20.1"
+bevy_ecs = { version = "0.20.1", default-features = false }
+bevy_reflect = "0.20.1"
+leafwing-input-manager = "0.22"
+bevy_input = { version = "0.20.1", default-features = false }
+bevy_time = { version = "0.20.1", default-features = false }
+bevy_math = { version = "0.20.1", default-features = false }
+bevy_state = { version = "0.20.1", default-features = false }

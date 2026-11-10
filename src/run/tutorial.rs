@@ -3,7 +3,7 @@
 //! in the tick/update function is returned).
 use bevy::log::info;
 use bevy::math::Quat;
-use bevy::prelude::{EventReader, EventWriter, Query, Time, Timer, With};
+use bevy::prelude::{MessageReader, MessageWriter, Query, Time, Timer, With};
 use leafwing_input_manager::action_state::ActionState;
 use rand::{thread_rng, Rng};
 use serde::Deserialize;
@@ -25,15 +25,14 @@ pub(super) fn modify_player_spawn_params_for_lesson_phase(
 ) {
     match lesson {
         TutorialLesson::Movement { .. } => {
-            (*spawn_params).forbid_main_attack_reason = Some("In movement tutorial".into());
-            (*spawn_params).forbid_special_attack_reason = Some("In movement tutorial".into());
+            spawn_params.forbid_main_attack_reason = Some("In movement tutorial".into());
+            spawn_params.forbid_special_attack_reason = Some("In movement tutorial".into());
         }
         TutorialLesson::AbilitySlotOne { .. } => {
-            (*spawn_params).forbid_special_attack_reason =
-                Some("In ability slot one tutorial".into());
+            spawn_params.forbid_special_attack_reason = Some("In ability slot one tutorial".into());
         }
         TutorialLesson::AbilitySlotTwo { .. } => {
-            (*spawn_params).forbid_main_attack_reason = Some("In ability slot two tutorial".into());
+            spawn_params.forbid_main_attack_reason = Some("In ability slot two tutorial".into());
         }
     }
 }
@@ -146,7 +145,7 @@ impl TutorialLesson {
                     up_timer.elapsed_secs(),
                     up_timer.duration().as_secs_f32()
                 ),
-                up_timer.finished(),
+                up_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -161,7 +160,7 @@ impl TutorialLesson {
                     down_timer.elapsed_secs(),
                     down_timer.duration().as_secs_f32()
                 ),
-                down_timer.finished(),
+                down_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -176,7 +175,7 @@ impl TutorialLesson {
                     left_timer.elapsed_secs(),
                     left_timer.duration().as_secs_f32()
                 ),
-                left_timer.finished(),
+                left_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -191,7 +190,7 @@ impl TutorialLesson {
                     right_timer.elapsed_secs(),
                     right_timer.duration().as_secs_f32()
                 ),
-                right_timer.finished(),
+                right_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -206,7 +205,7 @@ impl TutorialLesson {
                     up_left_timer.elapsed_secs(),
                     up_left_timer.duration().as_secs_f32()
                 ),
-                up_left_timer.finished(),
+                up_left_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -221,7 +220,7 @@ impl TutorialLesson {
                     up_right_timer.elapsed_secs(),
                     up_right_timer.duration().as_secs_f32()
                 ),
-                up_right_timer.finished(),
+                up_right_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -239,7 +238,7 @@ impl TutorialLesson {
                     down_left_timer.elapsed_secs(),
                     down_left_timer.duration().as_secs_f32()
                 ),
-                down_left_timer.finished(),
+                down_left_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -257,7 +256,7 @@ impl TutorialLesson {
                     down_right_timer.elapsed_secs(),
                     down_right_timer.duration().as_secs_f32()
                 ),
-                down_right_timer.finished(),
+                down_right_timer.is_finished(),
             )
         } else {
             ("".to_string(), false)
@@ -267,16 +266,16 @@ impl TutorialLesson {
     pub fn update(
         &mut self,
         player_query: &Query<&ActionState<PlayerAction>, With<PlayerComponent>>,
-        mob_destroyed_event: &mut EventReader<MobDestroyedEvent>,
+        mob_destroyed_event: &mut MessageReader<MobDestroyedEvent>,
         time: &Time,
-        spawn_mob_event_writer: &mut EventWriter<SpawnMobEvent>,
-        mob_reached_bottom_event: &mut EventReader<MobReachedBottomGateEvent>,
-        mob_segment_destroyed_event: &mut EventReader<MobSegmentDestroyedEvent>,
-        play_sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+        spawn_mob_event_writer: &mut MessageWriter<SpawnMobEvent>,
+        mob_reached_bottom_event: &mut MessageReader<MobReachedBottomGateEvent>,
+        mob_segment_destroyed_event: &mut MessageReader<MobSegmentDestroyedEvent>,
+        play_sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
     ) -> bool {
         self.disable_player_actions_for_current_phase();
         // tutorial will only be run for single player
-        if let Ok(action_state) = player_query.get_single() {
+        if let Ok(action_state) = player_query.single() {
             let finished_tutorial_phase = match self {
                 TutorialLesson::AbilitySlotOne { .. } => self.attack_tutorial(
                     mob_destroyed_event,
@@ -312,12 +311,12 @@ impl TutorialLesson {
 
     fn attack_tutorial(
         &mut self,
-        mob_destroyed_event: &mut EventReader<MobDestroyedEvent>,
+        mob_destroyed_event: &mut MessageReader<MobDestroyedEvent>,
         time: &Time,
-        spawn_mob_event_writer: &mut EventWriter<SpawnMobEvent>,
-        mob_reached_bottom_event: &mut EventReader<MobReachedBottomGateEvent>,
-        mob_segment_destroyed_event: &mut EventReader<MobSegmentDestroyedEvent>,
-        play_sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+        spawn_mob_event_writer: &mut MessageWriter<SpawnMobEvent>,
+        mob_reached_bottom_event: &mut MessageReader<MobReachedBottomGateEvent>,
+        mob_segment_destroyed_event: &mut MessageReader<MobSegmentDestroyedEvent>,
+        play_sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
     ) -> bool {
         if let TutorialLesson::AbilitySlotOne {
             mobs_to_destroy,
@@ -330,7 +329,7 @@ impl TutorialLesson {
             // spawn initial mob
             initial_spawn_timer.tick(time.delta());
             if initial_spawn_timer.just_finished() {
-                spawn_mob_event_writer.send(SpawnMobEvent {
+                spawn_mob_event_writer.write(SpawnMobEvent {
                     mob_type: MobType::Neutral(NeutralMobType::TutorialDrone),
                     position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y).into(),
                     rotation: Quat::default(),
@@ -349,7 +348,7 @@ impl TutorialLesson {
 
                     // spawn another mob if more are left
                     if *mobs_to_destroy != 0 {
-                        spawn_mob_event_writer.send(SpawnMobEvent {
+                        spawn_mob_event_writer.write(SpawnMobEvent {
                             mob_type: MobType::Neutral(NeutralMobType::TutorialDrone),
                             position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y)
                                 .into(),
@@ -357,11 +356,11 @@ impl TutorialLesson {
                             boss: false,
                         });
                     } else if *mobs_to_protect > 0 {
-                        play_sound_effect_event_writer.send(PlaySoundEffectEvent {
+                        play_sound_effect_event_writer.write(PlaySoundEffectEvent {
                             sound_effect_type: SoundEffectType::ObjectiveCompleted,
                         });
 
-                        spawn_mob_event_writer.send(SpawnMobEvent {
+                        spawn_mob_event_writer.write(SpawnMobEvent {
                             mob_type: MobType::Ally(AllyMobType::TutorialHauler2),
                             position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y)
                                 .into(),
@@ -378,7 +377,7 @@ impl TutorialLesson {
                     MobSegmentType::Neutral(NeutralMobSegmentType::TutorialHaulerBack)
                 ) && *mobs_to_protect != 0
                 {
-                    spawn_mob_event_writer.send(SpawnMobEvent {
+                    spawn_mob_event_writer.write(SpawnMobEvent {
                         mob_type: MobType::Ally(AllyMobType::TutorialHauler2),
                         position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y).into(),
                         rotation: Quat::default(),
@@ -398,7 +397,7 @@ impl TutorialLesson {
 
                         // spawn another mob if more are left
                         if *mobs_to_protect != 0 {
-                            spawn_mob_event_writer.send(SpawnMobEvent {
+                            spawn_mob_event_writer.write(SpawnMobEvent {
                                 mob_type: MobType::Ally(AllyMobType::TutorialHauler2),
                                 position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y)
                                     .into(),
@@ -406,14 +405,14 @@ impl TutorialLesson {
                                 boss: false,
                             });
                         } else {
-                            play_sound_effect_event_writer.send(PlaySoundEffectEvent {
+                            play_sound_effect_event_writer.write(PlaySoundEffectEvent {
                                 sound_effect_type: SoundEffectType::ObjectiveCompleted,
                             });
                         }
                     }
                 } else if let Some(mob_type) = &event.mob_type {
                     if matches!(mob_type, MobType::Neutral(NeutralMobType::TutorialDrone)) {
-                        spawn_mob_event_writer.send(SpawnMobEvent {
+                        spawn_mob_event_writer.write(SpawnMobEvent {
                             mob_type: MobType::Neutral(NeutralMobType::TutorialDrone),
                             position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y)
                                 .into(),
@@ -433,11 +432,11 @@ impl TutorialLesson {
 
     fn ability_tutorial(
         &mut self,
-        mob_destroyed_event: &mut EventReader<MobDestroyedEvent>,
+        mob_destroyed_event: &mut MessageReader<MobDestroyedEvent>,
         time: &Time,
-        spawn_mob_event_writer: &mut EventWriter<SpawnMobEvent>,
-        mob_reached_bottom_event: &mut EventReader<MobReachedBottomGateEvent>,
-        play_sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+        spawn_mob_event_writer: &mut MessageWriter<SpawnMobEvent>,
+        mob_reached_bottom_event: &mut MessageReader<MobReachedBottomGateEvent>,
+        play_sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
     ) -> bool {
         if let TutorialLesson::AbilitySlotTwo {
             mobs_to_destroy,
@@ -449,7 +448,7 @@ impl TutorialLesson {
             // spawn initial mob
             initial_spawn_timer.tick(time.delta());
             if initial_spawn_timer.just_finished() {
-                spawn_mob_event_writer.send(SpawnMobEvent {
+                spawn_mob_event_writer.write(SpawnMobEvent {
                     mob_type: MobType::Neutral(NeutralMobType::TutorialDrone),
                     position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y).into(),
                     rotation: Quat::default(),
@@ -468,7 +467,7 @@ impl TutorialLesson {
 
                     // spawn another mob if more are left
                     if *mobs_to_destroy != 0 {
-                        spawn_mob_event_writer.send(SpawnMobEvent {
+                        spawn_mob_event_writer.write(SpawnMobEvent {
                             mob_type: MobType::Neutral(NeutralMobType::TutorialDrone),
                             position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y)
                                 .into(),
@@ -476,7 +475,7 @@ impl TutorialLesson {
                             boss: false,
                         });
                     } else {
-                        play_sound_effect_event_writer.send(PlaySoundEffectEvent {
+                        play_sound_effect_event_writer.write(PlaySoundEffectEvent {
                             sound_effect_type: SoundEffectType::ObjectiveCompleted,
                         });
                     }
@@ -487,7 +486,7 @@ impl TutorialLesson {
             for event in mob_reached_bottom_event.read() {
                 if let Some(mob_type) = &event.mob_type {
                     if matches!(mob_type, MobType::Neutral(NeutralMobType::TutorialDrone)) {
-                        spawn_mob_event_writer.send(SpawnMobEvent {
+                        spawn_mob_event_writer.write(SpawnMobEvent {
                             mob_type: MobType::Neutral(NeutralMobType::TutorialDrone),
                             position: (thread_rng().gen_range(spawn_range_x.clone()), *spawn_y)
                                 .into(),
@@ -509,7 +508,7 @@ impl TutorialLesson {
         &mut self,
         action_state: &ActionState<PlayerAction>,
         time: &Time,
-        play_sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+        play_sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
     ) -> bool {
         // return true if all the timers are finished
         if let TutorialLesson::Movement {
@@ -559,20 +558,20 @@ impl TutorialLesson {
 
             // play objective completed sound if any timer just finished
             if objective_completed {
-                play_sound_effect_event_writer.send(PlaySoundEffectEvent {
+                play_sound_effect_event_writer.write(PlaySoundEffectEvent {
                     sound_effect_type: SoundEffectType::ObjectiveCompleted,
                 });
             }
 
             // return true if all timers are finshed
-            up_timer.finished()
-                && down_timer.finished()
-                && left_timer.finished()
-                && right_timer.finished()
-                && up_left_timer.finished()
-                && up_right_timer.finished()
-                && down_left_timer.finished()
-                && down_right_timer.finished()
+            up_timer.is_finished()
+                && down_timer.is_finished()
+                && left_timer.is_finished()
+                && right_timer.is_finished()
+                && up_left_timer.is_finished()
+                && up_right_timer.is_finished()
+                && down_left_timer.is_finished()
+                && down_right_timer.is_finished()
         } else {
             false
         }

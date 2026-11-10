@@ -4,8 +4,7 @@ use crate::{
 use bevy::{
     math::Vec3,
     prelude::{
-        default, Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Query, Res,
-        Transform, With,
+        default, Commands, Entity, MessageReader, MessageWriter, Query, Res, Transform, With,
     },
 };
 use serde::Deserialize;
@@ -39,9 +38,9 @@ pub fn consumable_execute_behavior_system(
         ),
         With<PlayerComponent>,
     >,
-    mut collision_events: EventReader<SortedCollisionEvent>,
-    mut spawn_effect_event_writer: EventWriter<SpawnEffectEvent>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
+    mut spawn_effect_event_writer: MessageWriter<SpawnEffectEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
     game_parameters_res: Res<GameParametersResource>,
 ) {
     // put all collision events in a vector first (so that they can be looked at multiple times)
@@ -92,10 +91,10 @@ fn apply_effects_on_impact(
         With<PlayerComponent>,
     >,
     consumable_effects: &Vec<ConsumableEffect>,
-    spawn_effect_event_writer: &mut EventWriter<SpawnEffectEvent>,
+    spawn_effect_event_writer: &mut MessageWriter<SpawnEffectEvent>,
     game_parameters_res: &GameParametersResource,
     consumable_type: ConsumableType,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
 ) {
     for collision_event in collision_events.iter() {
         if let SortedCollisionEvent::PlayerToConsumableIntersection {
@@ -105,10 +104,10 @@ fn apply_effects_on_impact(
         {
             if entity == *consumable_entity {
                 // despawn consumable
-                commands.entity(entity).despawn_recursive();
+                commands.entity(entity).despawn();
 
                 // spawn the consumable despawn effect
-                spawn_effect_event_writer.send(SpawnEffectEvent {
+                spawn_effect_event_writer.write(SpawnEffectEvent {
                     effect_type: EffectType::ConsumableDespawn,
                     transform: Transform {
                         translation: transform.translation,
@@ -123,7 +122,7 @@ fn apply_effects_on_impact(
                 });
 
                 // spawn consumable collected text
-                spawn_effect_event_writer.send(SpawnEffectEvent {
+                spawn_effect_event_writer.write(SpawnEffectEvent {
                     effect_type: EffectType::Text(TextEffectType::ConsumableCollected(
                         consumable_type.clone(),
                     )),
@@ -146,7 +145,7 @@ fn apply_effects_on_impact(
                 {
                     if *player_entity == player_entity_q {
                         // play consumable pickup sound
-                        sound_effect_event_writer.send(PlaySoundEffectEvent {
+                        sound_effect_event_writer.write(PlaySoundEffectEvent {
                             sound_effect_type: SoundEffectType::ConsumablePickup,
                         });
 

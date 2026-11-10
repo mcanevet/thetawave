@@ -8,10 +8,11 @@ use crate::{
     spawnable::SpawnableComponent,
 };
 use bevy::{
-    core::Name,
+    ecs::name::Name,
+    image::TextureAtlas,
     math::{Vec2, Vec3},
     prelude::{default, Commands, Component, Entity, Resource, Transform},
-    sprite::{SpriteBundle, TextureAtlas},
+    sprite::Sprite,
     time::{Timer, TimerMode},
 };
 use bevy_rapier2d::prelude::{
@@ -153,21 +154,21 @@ pub fn spawn_mob_segment(
 
     mob_segment
         .insert(ImpulseJoint::new(joint_parent_entity, *joint))
-        .insert(SpriteBundle {
-            texture: mob_assets.get_mob_segment_image(mob_segment_type),
-            transform: Transform {
-                translation: new_position.extend(mob_segment_data.z_level),
-                scale: Vec3::new(
-                    game_parameters.sprite_scale,
-                    game_parameters.sprite_scale,
-                    1.0,
-                ),
+        .insert(Sprite {
+            image: mob_assets.get_mob_segment_image(mob_segment_type),
+            texture_atlas: Some(TextureAtlas {
+                layout: mob_assets.get_mob_segment_texture_atlas_layout(mob_segment_type),
                 ..default()
-            },
+            }),
             ..default()
         })
-        .insert(TextureAtlas {
-            layout: mob_assets.get_mob_segment_texture_atlas_layout(mob_segment_type),
+        .insert(Transform {
+            translation: new_position.extend(mob_segment_data.z_level),
+            scale: Vec3::new(
+                game_parameters.sprite_scale,
+                game_parameters.sprite_scale,
+                1.0,
+            ),
             ..default()
         })
         .insert(AnimationComponent {
@@ -190,10 +191,10 @@ pub fn spawn_mob_segment(
             coefficient: 1.0,
             combine_rule: CoefficientCombineRule::Max,
         })
-        .insert(CollisionGroups {
-            memberships: SPAWNABLE_COLLIDER_GROUP | MOB_COLLIDER_GROUP,
-            filters: Group::ALL ^ HORIZONTAL_BARRIER_COLLIDER_GROUP,
-        })
+        .insert(CollisionGroups::new(
+            SPAWNABLE_COLLIDER_GROUP | MOB_COLLIDER_GROUP,
+            Group::ALL ^ HORIZONTAL_BARRIER_COLLIDER_GROUP,
+        ))
         .insert(MobSegmentComponent::from(mob_segment_data))
         .insert(HealthComponent::from(mob_segment_data))
         .insert(SpawnableComponent::new(SpawnableType::MobSegment(

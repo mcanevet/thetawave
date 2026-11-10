@@ -2,7 +2,7 @@ use crate::{
     collision::SortedCollisionEvent, game::GameParametersResource, spawnable::SpawnableComponent,
     tools::signed_modulo,
 };
-use bevy::prelude::{Entity, EventReader, Query, Res, Transform, Vec2, Vec3Swizzles, With};
+use bevy::prelude::{Entity, MessageReader, Query, Res, Transform, Vec2, Vec3Swizzles, With};
 use bevy_rapier2d::prelude::Velocity;
 use serde::Deserialize;
 use thetawave_interface::player::PlayerAttractionComponent;
@@ -30,7 +30,7 @@ pub enum SpawnableBehavior {
 pub fn spawnable_execute_behavior_system(
     game_parameters: Res<GameParametersResource>,
     mut spawnable_query: Query<(Entity, &mut SpawnableComponent, &mut Velocity, &Transform)>,
-    mut collision_events: EventReader<SortedCollisionEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
 ) {
     let mut collision_events_vec = vec![];
     for collision_event in collision_events.read() {
@@ -100,39 +100,30 @@ pub fn spawnable_set_target_behavior_system(
     // Recalculates what the target should be
     for player_transform in player_query.iter() {
         for (mut spawnable_component, spawnable_transform) in spawnable_query.iter_mut() {
-            match &spawnable_component.spawnable_type {
-                SpawnableType::Mob(mob_type) => match mob_type {
-                    MobType::Enemy(enemy_type) => match enemy_type {
-                        EnemyMobType::Missile => {
-                            // set target to closest player
-                            for behavior in spawnable_component.behaviors.iter_mut() {
-                                *behavior = match behavior {
-                                    SpawnableBehavior::RotateToTarget(target) => {
-                                        let spawnable_position_vec2: Vec2 =
-                                            spawnable_transform.translation.xy();
-                                        let player_position_vec2: Vec2 =
-                                            player_transform.translation.xy();
-                                        if target.is_none()
-                                            || spawnable_position_vec2
-                                                .distance(player_position_vec2)
-                                                < spawnable_position_vec2.distance(target.unwrap())
-                                        {
-                                            SpawnableBehavior::RotateToTarget(Some(
-                                                player_position_vec2,
-                                            ))
-                                        } else {
-                                            behavior.clone()
-                                        }
-                                    }
-                                    _ => behavior.clone(),
+            if let SpawnableType::Mob(MobType::Enemy(enemy_type)) =
+                &spawnable_component.spawnable_type
+            {
+                if enemy_type == &EnemyMobType::Missile {
+                    // set target to closest player
+                    for behavior in spawnable_component.behaviors.iter_mut() {
+                        *behavior = match behavior {
+                            SpawnableBehavior::RotateToTarget(target) => {
+                                let spawnable_position_vec2: Vec2 =
+                                    spawnable_transform.translation.xy();
+                                let player_position_vec2: Vec2 = player_transform.translation.xy();
+                                if target.is_none()
+                                    || spawnable_position_vec2.distance(player_position_vec2)
+                                        < spawnable_position_vec2.distance(target.unwrap())
+                                {
+                                    SpawnableBehavior::RotateToTarget(Some(player_position_vec2))
+                                } else {
+                                    behavior.clone()
                                 }
                             }
+                            _ => behavior.clone(),
                         }
-                        _ => {}
-                    },
-                    _ => {}
-                },
-                _ => {}
+                    }
+                }
             }
         }
     }
@@ -151,20 +142,20 @@ fn move_to_position(
     let max_speed_x = (spawnable_component.speed.x * angle.cos()).abs();
     let max_speed_y = (spawnable_component.speed.y * angle.sin()).abs();
 
-    if rb_vel.linvel.x > max_speed_x {
-        rb_vel.linvel.x -= spawnable_component.deceleration.x;
-    } else if rb_vel.linvel.x < -max_speed_x {
-        rb_vel.linvel.x += spawnable_component.deceleration.x;
+    if rb_vel.linear.x > max_speed_x {
+        rb_vel.linear.x -= spawnable_component.deceleration.x;
+    } else if rb_vel.linear.x < -max_speed_x {
+        rb_vel.linear.x += spawnable_component.deceleration.x;
     } else {
-        rb_vel.linvel.x += spawnable_component.acceleration.x * angle.cos();
+        rb_vel.linear.x += spawnable_component.acceleration.x * angle.cos();
     }
 
-    if rb_vel.linvel.y > max_speed_y {
-        rb_vel.linvel.y -= spawnable_component.deceleration.y;
-    } else if rb_vel.linvel.y < -max_speed_y {
-        rb_vel.linvel.y += spawnable_component.deceleration.y;
+    if rb_vel.linear.y > max_speed_y {
+        rb_vel.linear.y -= spawnable_component.deceleration.y;
+    } else if rb_vel.linear.y < -max_speed_y {
+        rb_vel.linear.y += spawnable_component.deceleration.y;
     } else {
-        rb_vel.linvel.y += spawnable_component.acceleration.y * angle.sin();
+        rb_vel.linear.y += spawnable_component.acceleration.y * angle.sin();
     }
 }
 
@@ -182,14 +173,14 @@ fn change_horizontal_direction_on_impact(
                 ..
             }
             | SortedCollisionEvent::MobToBarrierContact { mob_entity, .. }
-            | SortedCollisionEvent::MobToMobSegmentContact { mob_entity, .. } => {
-                if entity == *mob_entity {
-                    for behavior in spawnable_component.behaviors.iter_mut() {
-                        *behavior = match behavior {
-                            SpawnableBehavior::MoveRight => SpawnableBehavior::MoveLeft,
-                            SpawnableBehavior::MoveLeft => SpawnableBehavior::MoveRight,
-                            _ => behavior.clone(),
-                        }
+            | SortedCollisionEvent::MobToMobSegmentContact { mob_entity, .. }
+                if entity == *mob_entity =>
+            {
+                for behavior in spawnable_component.behaviors.iter_mut() {
+                    *behavior = match behavior {
+                        SpawnableBehavior::MoveRight => SpawnableBehavior::MoveLeft,
+                        SpawnableBehavior::MoveLeft => SpawnableBehavior::MoveRight,
+                        _ => behavior.clone(),
                     }
                 }
             }
@@ -224,11 +215,11 @@ fn rotate_to_target(
     }
 
     if smallest_angle < 0.0 {
-        if rb_vel.angvel > -spawnable_component.angular_speed {
-            rb_vel.angvel -= spawnable_component.angular_acceleration;
+        if rb_vel.angular > -spawnable_component.angular_speed {
+            rb_vel.angular -= spawnable_component.angular_acceleration;
         }
-    } else if rb_vel.angvel < spawnable_component.angular_speed {
-        rb_vel.angvel += spawnable_component.angular_acceleration;
+    } else if rb_vel.angular < spawnable_component.angular_speed {
+        rb_vel.angular += spawnable_component.angular_acceleration;
     }
 }
 
@@ -244,48 +235,48 @@ fn move_forward(
     let max_speed_x = (spawnable_component.speed.x * angle.cos()).abs();
     let max_speed_y = (spawnable_component.speed.y * angle.sin()).abs();
 
-    if rb_vel.linvel.x > max_speed_x {
-        rb_vel.linvel.x -= spawnable_component.deceleration.x;
-    } else if rb_vel.linvel.x < -max_speed_x {
-        rb_vel.linvel.x += spawnable_component.deceleration.x;
+    if rb_vel.linear.x > max_speed_x {
+        rb_vel.linear.x -= spawnable_component.deceleration.x;
+    } else if rb_vel.linear.x < -max_speed_x {
+        rb_vel.linear.x += spawnable_component.deceleration.x;
     } else {
-        rb_vel.linvel.x += spawnable_component.acceleration.x * angle.cos();
+        rb_vel.linear.x += spawnable_component.acceleration.x * angle.cos();
     }
 
-    if rb_vel.linvel.y > max_speed_y {
-        rb_vel.linvel.y -= spawnable_component.deceleration.y;
-    } else if rb_vel.linvel.y < -max_speed_y {
-        rb_vel.linvel.y += spawnable_component.deceleration.y;
+    if rb_vel.linear.y > max_speed_y {
+        rb_vel.linear.y -= spawnable_component.deceleration.y;
+    } else if rb_vel.linear.y < -max_speed_y {
+        rb_vel.linear.y += spawnable_component.deceleration.y;
     } else {
-        rb_vel.linvel.y += spawnable_component.acceleration.x * angle.sin();
+        rb_vel.linear.y += spawnable_component.acceleration.x * angle.sin();
     }
 }
 
 /// Moves entity down
 fn move_down(spawnable_component: &SpawnableComponent, rb_vel: &mut Velocity) {
     //move down
-    if rb_vel.linvel.y > spawnable_component.speed.y * -1.0 {
-        rb_vel.linvel.y -= spawnable_component.acceleration.y;
+    if rb_vel.linear.y > -spawnable_component.speed.y {
+        rb_vel.linear.y -= spawnable_component.acceleration.y;
     } else {
-        rb_vel.linvel.y += spawnable_component.deceleration.y;
+        rb_vel.linear.y += spawnable_component.deceleration.y;
     }
 }
 
 /// Moves entity right
 fn move_right(spawnable_component: &SpawnableComponent, rb_vel: &mut Velocity) {
-    if rb_vel.linvel.x < spawnable_component.speed.x {
-        rb_vel.linvel.x += spawnable_component.acceleration.x;
+    if rb_vel.linear.x < spawnable_component.speed.x {
+        rb_vel.linear.x += spawnable_component.acceleration.x;
     } else {
-        rb_vel.linvel.x -= spawnable_component.deceleration.x;
+        rb_vel.linear.x -= spawnable_component.deceleration.x;
     }
 }
 
 /// Moves entity left
 fn move_left(spawnable_component: &SpawnableComponent, rb_vel: &mut Velocity) {
-    if rb_vel.linvel.x > spawnable_component.speed.x * -1.0 {
-        rb_vel.linvel.x -= spawnable_component.acceleration.x;
+    if rb_vel.linear.x > -spawnable_component.speed.x {
+        rb_vel.linear.x -= spawnable_component.acceleration.x;
     } else {
-        rb_vel.linvel.x += spawnable_component.deceleration.x;
+        rb_vel.linear.x += spawnable_component.deceleration.x;
     }
 }
 
@@ -296,12 +287,12 @@ fn brake_horizontal(
     rb_vel: &mut Velocity,
 ) {
     // decelerate in x direction
-    if rb_vel.linvel.x > game_parameters.stop_threshold {
-        rb_vel.linvel.x -= spawnable_component.deceleration.x;
-    } else if rb_vel.linvel.x < game_parameters.stop_threshold * -1.0 {
-        rb_vel.linvel.x += spawnable_component.deceleration.x;
+    if rb_vel.linear.x > game_parameters.stop_threshold {
+        rb_vel.linear.x -= spawnable_component.deceleration.x;
+    } else if rb_vel.linear.x < -game_parameters.stop_threshold {
+        rb_vel.linear.x += spawnable_component.deceleration.x;
     } else {
-        rb_vel.linvel.x = 0.0;
+        rb_vel.linear.x = 0.0;
     }
 }
 /// Nudge each "attractive" item toward the closest player based on that player's "gravity constant"
@@ -350,7 +341,7 @@ pub(super) fn attract_to_player_system(
             if distance_to_player <= *cutoff_distance {
                 let direction =
                     (*closest_player_position - spawnable_transform.translation.xy()).normalize();
-                spawnable_velocity.linvel += *attraction_accel * direction;
+                spawnable_velocity.linear += *attraction_accel * direction;
             }
         }
     }

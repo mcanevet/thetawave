@@ -3,9 +3,8 @@
 use crate::spawnable::effect::EffectPlugin;
 use crate::GameUpdateSet;
 use bevy::app::{App, Plugin, Update};
-use bevy::hierarchy::DespawnRecursiveExt;
 use bevy::math::Vec2;
-use bevy::prelude::{Commands, Component, Entity, IntoSystemConfigs, Query, Res};
+use bevy::prelude::{Commands, Component, Entity, IntoScheduleConfigs, Query, Res};
 use bevy::state::condition::in_state;
 use bevy::time::{Time, Timer};
 use bevy_rapier2d::prelude::Velocity;
@@ -90,13 +89,13 @@ impl Plugin for SpawnablePlugin {
             .expect("Failed to parse ConsumableResource from 'consumables.ron'"),
         });
 
-        app.add_event::<SpawnConsumableEvent>()
-            .add_event::<FireWeaponEvent>()
-            .add_event::<SpawnMobEvent>()
-            .add_event::<MobBehaviorUpdateEvent>()
-            .add_event::<MobDestroyedEvent>()
-            .add_event::<MobSegmentDestroyedEvent>()
-            .add_event::<BossesDestroyedEvent>();
+        app.add_message::<SpawnConsumableEvent>()
+            .add_message::<FireWeaponEvent>()
+            .add_message::<SpawnMobEvent>()
+            .add_message::<MobBehaviorUpdateEvent>()
+            .add_message::<MobDestroyedEvent>()
+            .add_message::<MobSegmentDestroyedEvent>()
+            .add_message::<BossesDestroyedEvent>();
 
         app.add_plugins((EffectPlugin, ItemPlugin));
 
@@ -203,8 +202,8 @@ impl From<InitialMotion> for Velocity {
         };
 
         Velocity {
-            linvel: im.linvel.unwrap_or_default() + random_linvel,
-            angvel: im.angvel.unwrap_or_default() + random_angvel,
+            linear: im.linvel.unwrap_or_default() + random_linvel,
+            angular: im.angvel.unwrap_or_default() + random_angvel,
         }
     }
 }
@@ -224,7 +223,7 @@ fn despawn_timer_system(
     for (entity, mut despawn_timer) in despawn_timer_query.iter_mut() {
         despawn_timer.despawn_timer.tick(time.delta());
         if despawn_timer.despawn_timer.just_finished() {
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
         }
     }
 }

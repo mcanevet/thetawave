@@ -1,5 +1,5 @@
 //! Exposes resources with methods to compute loot drops from killed mobs.
-use bevy::prelude::{App, EventWriter, Plugin, Resource, Vec2};
+use bevy::prelude::{App, MessageWriter, Plugin, Resource, Vec2};
 use consumable::ConsumableLootDrop;
 use ron::de::from_bytes;
 use serde::Deserialize;
@@ -41,8 +41,8 @@ impl LootDropsResource {
     pub fn spawn_loot_drops(
         &self,
         drop_list_type: &DropListType,
-        consumable_event_writer: &mut EventWriter<SpawnConsumableEvent>,
-        item_event_writer: &mut EventWriter<SpawnItemEvent>,
+        consumable_event_writer: &mut MessageWriter<SpawnConsumableEvent>,
+        item_event_writer: &mut MessageWriter<SpawnItemEvent>,
         position: Vec2,
     ) {
         // get drops list from resource
@@ -55,7 +55,7 @@ impl LootDropsResource {
                     consumable_loot_drop.roll_and_spawn(consumable_event_writer, position);
                 }
                 LootDrop::Item(item_type) => {
-                    item_event_writer.send(SpawnItemEvent {
+                    item_event_writer.write(SpawnItemEvent {
                         item_type: item_type.clone(),
                         position,
                     });

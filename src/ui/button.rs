@@ -1,26 +1,37 @@
+#![allow(deprecated)]
+
 use bevy::{
     app::AppExit,
     asset::Handle,
     color::{Color, Srgba},
     ecs::{
         component::Component,
-        event::{Event, EventReader, EventWriter},
+        hierarchy::ChildSpawnerCommands,
+        message::{Message, MessageReader, MessageWriter},
         system::ResMut,
     },
-    hierarchy::{BuildChildren, ChildBuilder},
+    image::{Image, TextureAtlas, TextureAtlasLayout},
     log::info,
-    prelude::{ImageBundle, NextState},
-    render::texture::Image,
-    sprite::{TextureAtlas, TextureAtlasLayout},
-    text::{Font, JustifyText, TextStyle},
+    prelude::NextState,
+    text::{Font, Justify, TextColor, TextFont, TextLayout},
     ui::{
-        node_bundles::{ButtonBundle, NodeBundle, TextBundle},
-        AlignItems, BackgroundColor, FlexDirection, JustifyContent, Style, UiRect, Val,
+        widget::{ImageNode, Text},
+        AlignItems, BackgroundColor, FlexDirection, JustifyContent, Node, UiRect, Val,
     },
     utils::default,
 };
 use thetawave_assets::UiAssets;
 use thetawave_interface::{player::PlayerInput, states::AppStates};
+
+/// Marker component for clickable menu buttons.
+///
+/// Bevy 0.20 port: bevy's deprecated `Button` widget became a `pub(crate)`
+/// alias for a private struct, so it can no longer be named from downstream
+/// crates. This local marker mirrors it; `require(Interaction)` keeps the
+/// (deprecated) `ui_focus_system` updating `Interaction` for our buttons.
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[require(bevy::ui::Interaction)]
+pub(super) struct Button;
 
 /// Event and Component for giving and sending menu buttons actions to move the user from
 /// `AppStates::MainMenu` to `AppStates::CharacterSelection`, plus possibly a few digressions and
@@ -48,7 +59,7 @@ impl From<ButtonActionType> for ButtonActionComponent {
     }
 }
 
-#[derive(Event, Clone, PartialEq, Eq, Copy, Debug)]
+#[derive(Message, Clone, PartialEq, Eq, Copy, Debug)]
 pub(super) struct ButtonActionEvent {
     pub action: ButtonActionType,
 }
@@ -112,12 +123,12 @@ impl ButtonActionComponent {
 
     /// External style applied to buttons
     /// Returns different styles based the based on the button action
-    fn get_external_style(&self) -> Style {
+    fn get_external_style(&self) -> Node {
         match self.action {
             ButtonActionType::EnterCharacterSelection
             | ButtonActionType::EnterOptions
             | ButtonActionType::EnterCompendium
-            | ButtonActionType::QuitGame => Style {
+            | ButtonActionType::QuitGame => Node {
                 max_width: Val::Px(500.0),
                 width: Val::Percent(25.0),
                 min_width: Val::Px(200.0),
@@ -125,7 +136,7 @@ impl ButtonActionComponent {
                 margin: UiRect::new(Val::Auto, Val::Auto, Val::Percent(1.0), Val::Percent(1.0)),
                 ..default()
             },
-            ButtonActionType::CharacterSelectJoin => Style {
+            ButtonActionType::CharacterSelectJoin => Node {
                 max_width: Val::Px(500.0),
                 width: Val::Percent(100.0),
                 min_width: Val::Px(200.0),
@@ -134,11 +145,11 @@ impl ButtonActionComponent {
                 ..default()
             },
             ButtonActionType::CharacterSelectLeft(_)
-            | ButtonActionType::CharacterSelectRight(_) => Style {
+            | ButtonActionType::CharacterSelectRight(_) => Node {
                 height: Val::Percent(10.0),
                 ..default()
             },
-            ButtonActionType::CharacterSelectReady { .. } => Style {
+            ButtonActionType::CharacterSelectReady { .. } => Node {
                 max_width: Val::Px(500.0),
                 width: Val::Percent(85.0),
                 min_width: Val::Px(300.0),
@@ -150,13 +161,13 @@ impl ButtonActionComponent {
 
     /// Internal style of the ui inside of the button
     /// such as the text and the input symbols
-    fn get_internal_style(&self) -> Style {
+    fn get_internal_style(&self) -> Node {
         match self.action {
             ButtonActionType::EnterCharacterSelection
             | ButtonActionType::EnterOptions
             | ButtonActionType::EnterCompendium
             | ButtonActionType::QuitGame
-            | ButtonActionType::CharacterSelectJoin => Style {
+            | ButtonActionType::CharacterSelectJoin => Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
@@ -166,11 +177,11 @@ impl ButtonActionComponent {
                 ..default()
             },
             ButtonActionType::CharacterSelectLeft(_)
-            | ButtonActionType::CharacterSelectRight(_) => Style {
+            | ButtonActionType::CharacterSelectRight(_) => Node {
                 padding: UiRect::new(Val::ZERO, Val::ZERO, Val::Percent(5.0), Val::ZERO),
                 ..default()
             },
-            ButtonActionType::CharacterSelectReady { .. } => Style {
+            ButtonActionType::CharacterSelectReady { .. } => Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
@@ -215,9 +226,9 @@ impl ButtonActionComponent {
 // Handles state changes for buttons. This runs when a user actually
 // clicks/whacks enter on a button in the main menu
 pub(super) fn button_action_change_state_system(
-    mut button_event_reader: EventReader<ButtonActionEvent>,
+    mut button_event_reader: MessageReader<ButtonActionEvent>,
     mut next_app_state: ResMut<NextState<AppStates>>,
-    mut exit: EventWriter<AppExit>,
+    mut exit: MessageWriter<AppExit>,
 ) {
     for event in button_event_reader.read() {
         match event.action {
@@ -227,7 +238,7 @@ pub(super) fn button_action_change_state_system(
             ButtonActionType::EnterOptions => info!("Enter options menu."),
             ButtonActionType::EnterCompendium => info!("Enter compendium."),
             ButtonActionType::QuitGame => {
-                exit.send(AppExit::Success);
+                exit.write(AppExit::Success);
             }
             _ => {}
         }
@@ -246,7 +257,7 @@ pub(super) trait UiButtonChildBuilderExt {
     );
 }
 
-impl UiButtonChildBuilderExt for ChildBuilder<'_> {
+impl UiButtonChildBuilderExt for ChildSpawnerCommands<'_> {
     fn spawn_button(
         &mut self,
         ui_assets: &UiAssets,
@@ -255,73 +266,75 @@ impl UiButtonChildBuilderExt for ChildBuilder<'_> {
         player_input: Option<&PlayerInput>,
     ) {
         // Spawn button bundle entity, with a child entity containing the texture
-        self.spawn(ButtonBundle {
-            style: action.get_external_style(),
-            background_color: BackgroundColor(Color::Srgba(Srgba::NONE)),
-            ..default()
-        })
+        self.spawn((
+            Button,
+            action.get_external_style(),
+            BackgroundColor(Color::Srgba(Srgba::NONE)),
+        ))
         .insert(action)
         .with_children(|parent| {
             let button_asset = action.asset(ui_assets);
 
             parent
-                .spawn(ImageBundle {
-                    image: button_asset.0.into(),
-                    style: action.get_internal_style(),
-                    ..default()
-                })
-                .insert(TextureAtlas {
-                    layout: button_asset.1.into(),
-                    ..default()
-                })
+                .spawn((
+                    ImageNode {
+                        image: button_asset.0,
+                        texture_atlas: Some(TextureAtlas {
+                            layout: button_asset.1,
+                            ..default()
+                        }),
+                        ..default()
+                    },
+                    action.get_internal_style(),
+                ))
                 .with_children(|parent| {
                     if let Some(text) = action.text() {
-                        parent.spawn(
-                            TextBundle::from_section(
-                                text,
-                                TextStyle {
-                                    font: font.clone(),
-                                    font_size: 30.0,
-                                    color: Color::BLACK,
-                                },
-                            )
-                            .with_text_justify(JustifyText::Center),
-                        );
+                        parent.spawn((
+                            Text::new(text),
+                            TextFont {
+                                font: font.clone().into(),
+                                font_size: 30.0.into(),
+                                ..Default::default()
+                            },
+                            TextColor(Color::BLACK),
+                            TextLayout {
+                                justify: Justify::Center,
+                                ..Default::default()
+                            },
+                        ));
                     }
 
                     if let Some(inputs) = action.get_input_images(ui_assets, player_input.copied())
                     {
                         // Row for all button inputs
                         parent
-                            .spawn(NodeBundle {
-                                style: Style {
-                                    justify_content: JustifyContent::Center,
-                                    flex_direction: FlexDirection::Row,
-                                    height: Val::Percent(35.0),
-                                    margin: UiRect::top(Val::Vh(1.0)),
-                                    ..default()
-                                },
+                            .spawn(Node {
+                                justify_content: JustifyContent::Center,
+                                flex_direction: FlexDirection::Row,
+                                height: Val::Percent(35.0),
+                                margin: UiRect::top(Val::Vh(1.0)),
                                 ..default()
                             })
                             .with_children(|parent| {
                                 for (image, layout) in inputs {
-                                    parent
-                                        .spawn(ImageBundle {
-                                            image: image.into(),
-                                            style: Style {
-                                                margin: UiRect {
-                                                    left: Val::Vw(0.5),
-                                                    right: Val::Vw(0.5),
-                                                    ..default()
-                                                },
+                                    parent.spawn((
+                                        ImageNode {
+                                            image,
+                                            texture_atlas: Some(TextureAtlas {
+                                                layout,
+                                                ..default()
+                                            }),
+                                            ..default()
+                                        },
+                                        Node {
+                                            margin: UiRect {
+                                                left: Val::Vw(0.5),
+                                                right: Val::Vw(0.5),
                                                 ..default()
                                             },
                                             ..default()
-                                        })
-                                        .insert(TextureAtlas {
-                                            layout: layout.into(),
-                                            ..default()
-                                        });
+                                        },
+                                    ));
                                 }
                             });
                     }

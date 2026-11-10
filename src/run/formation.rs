@@ -1,7 +1,7 @@
 use bevy::{
     log::error,
     math::{Quat, Vec2},
-    prelude::{Event, EventReader, EventWriter, Resource},
+    prelude::{Message, MessageReader, MessageWriter, Resource},
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -60,8 +60,8 @@ impl Formation {
     /// Spawn all spawnables in the formation at once
     pub fn spawn_formation(
         &self,
-        spawn_consumable: &mut EventWriter<SpawnConsumableEvent>,
-        spawn_mob: &mut EventWriter<SpawnMobEvent>,
+        spawn_consumable: &mut MessageWriter<SpawnConsumableEvent>,
+        spawn_mob: &mut MessageWriter<SpawnMobEvent>,
     ) {
         // iterate through all spawnables in the formation and spawn at given position
         for formation_spawnable in self.formation_spawnables.iter() {
@@ -69,7 +69,7 @@ impl Formation {
             // call the appropriate spawn function for the spawnable
             match &formation_spawnable.spawnable_type {
                 thetawave_interface::spawnable::SpawnableType::Mob(mob_type) => {
-                    spawn_mob.send(SpawnMobEvent {
+                    spawn_mob.write(SpawnMobEvent {
                         mob_type: mob_type.clone(),
                         position: formation_spawnable.position,
                         rotation: Quat::default(),
@@ -78,7 +78,7 @@ impl Formation {
                 }
 
                 SpawnableType::Consumable(consumable_type) => {
-                    spawn_consumable.send(SpawnConsumableEvent {
+                    spawn_consumable.write(SpawnConsumableEvent {
                         consumable_type: consumable_type.clone(),
                         position: formation_spawnable.position,
                     });
@@ -90,7 +90,7 @@ impl Formation {
 }
 
 /// Event for spawning formations
-#[derive(Event)]
+#[derive(Message)]
 pub struct SpawnFormationEvent {
     //pub formation_pool: FormationPoolType,
     pub formation: Formation,
@@ -98,9 +98,9 @@ pub struct SpawnFormationEvent {
 
 /// Manages spawning of formations
 pub fn spawn_formation_system(
-    mut spawn_formation: EventReader<SpawnFormationEvent>,
-    mut spawn_consumable: EventWriter<SpawnConsumableEvent>,
-    mut spawn_mob: EventWriter<SpawnMobEvent>,
+    mut spawn_formation: MessageReader<SpawnFormationEvent>,
+    mut spawn_consumable: MessageWriter<SpawnConsumableEvent>,
+    mut spawn_mob: MessageWriter<SpawnMobEvent>,
 ) {
     for event in spawn_formation.read() {
         event

@@ -3,15 +3,23 @@ name = "thetawave_storage"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# NOT part of the default fixture build (sqlite in user dirs);
+# compile-on-demand only, upstream parity.
+# NOTE: declares `bevy` with default-features = false and no
+# features of its own, so this crate only compiles under WORKSPACE
+# feature unification (e.g. via the fixture workspace battery);
+# building/testing it standalone (`cargo test -p thetawave_storage`)
+# fails. Upstream parity — intentional.
+[lints.rust]
+unexpected_cfgs = { level = "allow" }
 
 [dependencies]
-bevy = {workspace = true}
-thiserror = {workspace = true}
-derive_more = {workspace = true}
+bevy = { version = "0.20.1", default-features = false }
+thiserror = "1.0"
+derive_more = "0.99.17"
 rusqlite = { version = "0.29.0", features = ["bundled"] }
 directories = "5.0.1"
-thetawave_interface = {path = "../thetawave_interface"}
+thetawave_interface = { path = "../thetawave_interface" }
 
 [dev-dependencies]
 tempdir = "0.3.7"

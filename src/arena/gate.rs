@@ -1,11 +1,8 @@
 use crate::spawnable::{MobComponent, MobSegmentComponent, SpawnableComponent};
 use bevy::{
-    core::Name,
+    ecs::name::Name,
     math::Vec2,
-    prelude::{
-        Commands, Component, DespawnRecursiveExt, Entity, EventReader, EventWriter, Query,
-        Transform, TransformBundle, With,
-    },
+    prelude::{Commands, Component, Entity, MessageReader, MessageWriter, Query, Transform, With},
 };
 use bevy_rapier2d::{
     prelude::{Collider, CollisionEvent, Sensor},
@@ -27,9 +24,7 @@ pub(super) fn spawn_despawn_gates_system(mut commands: Commands) {
 fn spawn_despawn_gate(commands: &mut Commands, position: Vec2, width: f32, height: f32) {
     commands
         .spawn_empty()
-        .insert(TransformBundle::from_transform(
-            Transform::from_translation(position.extend(0.0)),
-        ))
+        .insert(Transform::from_translation(position.extend(0.0)))
         .insert(Collider::cuboid(width / 2.0, height / 2.0))
         .insert(Sensor)
         .insert(DespawnGateComponent)
@@ -41,12 +36,12 @@ fn spawn_despawn_gate(commands: &mut Commands, position: Vec2, width: f32, heigh
 #[allow(clippy::too_many_arguments)]
 pub(super) fn despawn_gates_system(
     mut commands: Commands,
-    mut collision_events: EventReader<CollisionEvent>,
+    mut collision_events: MessageReader<CollisionEvent>,
     despawn_gate_query: Query<Entity, With<DespawnGateComponent>>,
     spawnable_query: Query<Entity, With<SpawnableComponent>>,
     mob_query: Query<(Entity, &MobComponent)>,
     mob_segment_query: Query<(Entity, &MobSegmentComponent)>,
-    mut enemy_bottom_event: EventWriter<MobReachedBottomGateEvent>,
+    mut enemy_bottom_event: MessageWriter<MobReachedBottomGateEvent>,
 ) {
     // loop through all collision events
     'event_loop: for collision_event in collision_events.read() {
@@ -70,14 +65,14 @@ pub(super) fn despawn_gates_system(
                 // verify the other entity is a spawnable
                 if spawnable_query.contains(*other_entity) {
                     // despawn the spawnable entity
-                    commands.entity(*other_entity).despawn_recursive();
+                    commands.entity(*other_entity).despawn();
 
                     // check if the other entity is a mob
                     if let Ok((_, mob_component)) = mob_query.get(*other_entity) {
                         // send event for mob reaching bottom of arena
                         if let Some(defense_interaction) = mob_component.defense_interaction.clone()
                         {
-                            enemy_bottom_event.send(MobReachedBottomGateEvent {
+                            enemy_bottom_event.write(MobReachedBottomGateEvent {
                                 mob_type: Some(mob_component.mob_type.clone()),
                                 mob_segment_type: None,
                                 defense_interaction,
@@ -91,7 +86,7 @@ pub(super) fn despawn_gates_system(
                         if let Some(defense_interaction) =
                             mob_segment_component.defense_interaction.clone()
                         {
-                            enemy_bottom_event.send(MobReachedBottomGateEvent {
+                            enemy_bottom_event.write(MobReachedBottomGateEvent {
                                 mob_type: None,
                                 mob_segment_type: Some(
                                     mob_segment_component.mob_segment_type.clone(),

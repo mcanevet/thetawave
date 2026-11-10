@@ -8,14 +8,13 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
+        hierarchy::ChildSpawnerCommands,
         query::With,
         system::{Commands, Query, Res},
     },
-    hierarchy::{BuildChildren, ChildBuilder, DespawnRecursiveExt},
-    text::{Font, Text, TextStyle},
+    text::{Font, Justify, TextColor, TextFont, TextLayout},
     ui::{
-        node_bundles::{NodeBundle, TextBundle},
-        AlignItems, FlexDirection, JustifyContent, Style, UiRect, Val,
+        widget::Text, AlignItems, BackgroundColor, FlexDirection, JustifyContent, Node, UiRect, Val,
     },
     utils::default,
 };
@@ -41,53 +40,46 @@ pub(super) struct LevelNameUi;
 #[derive(Component)]
 pub(super) struct LevelDataUi;
 
-impl LevelUiChildBuilderExt for ChildBuilder<'_> {
+impl LevelUiChildBuilderExt for ChildSpawnerCommands<'_> {
     fn spawn_level_ui(&mut self, font: Handle<Font>) {
-        self.spawn(NodeBundle {
-            style: Style {
-                width: NODE_WIDTH,
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
+        self.spawn(Node {
+            width: NODE_WIDTH,
+            height: Val::Percent(100.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
             ..default()
         })
         .with_children(|left| {
-            left.spawn(TextBundle {
-                style: Style::default(),
-                text: Text::from_section(
-                    "",
-                    TextStyle {
-                        font: font.clone(),
-                        font_size: FONT_SIZE,
-                        color: Color::Srgba(TEXT_COLOR),
-                    },
-                ),
-                ..default()
-            })
+            left.spawn((
+                Text::new(""),
+                TextFont {
+                    font: font.clone().into(),
+                    font_size: FONT_SIZE.into(),
+                    ..Default::default()
+                },
+                TextColor(Color::Srgba(TEXT_COLOR)),
+                TextLayout {
+                    justify: Justify::Center,
+                    ..Default::default()
+                },
+                Node::default(),
+            ))
             .insert(LevelNameUi);
         });
 
-        self.spawn(NodeBundle {
-            style: Style {
-                width: NODE_WIDTH,
-                height: Val::Percent(100.0),
-                ..default()
-            },
+        self.spawn(Node {
+            width: NODE_WIDTH,
+            height: Val::Percent(100.0),
             ..default()
         })
         .with_children(|right| {
             right
-                .spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        padding: LEVEL_DATA_PADDING,
-                        align_items: AlignItems::Center,
-                        justify_content: JustifyContent::Center,
-                        ..default()
-                    },
+                .spawn(Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    padding: LEVEL_DATA_PADDING,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
                     ..default()
                 })
                 .insert(LevelDataUi);
@@ -103,44 +95,44 @@ pub(super) fn update_level_ui_system(
     run_resource: Res<CurrentRunProgressResource>,
 ) {
     if let Some(current_level) = &run_resource.current_level {
-        if let Ok(mut text) = level_name_ui_query.get_single_mut() {
-            text.sections[0].value = current_level.get_name();
+        if let Ok(mut text) = level_name_ui_query.single_mut() {
+            text.0 = current_level.get_name().to_string();
         }
 
-        if let Ok(entity) = level_data_ui_query.get_single() {
-            commands.entity(entity).despawn_descendants();
+        if let Ok(entity) = level_data_ui_query.single() {
+            commands.entity(entity).despawn_children();
 
             if let Some(objective) = &current_level.objective {
                 match objective {
                     thetawave_interface::objective::Objective::Defense(defense_data) => {
                         commands.entity(entity).with_children(|level_data_ui| {
                             level_data_ui
-                                .spawn(NodeBundle {
-                                    style: Style {
+                                .spawn((
+                                    Node {
                                         width: DEFENSE_WIDTH,
                                         height: DEFENSE_HEIGHT,
                                         flex_direction: FlexDirection::Row,
                                         ..default()
                                     },
-                                    background_color: DEFENSE_COLOR
-                                        .with_alpha(DEFENSE_COLOR_EMPTY_ALPHA)
-                                        .into(),
-                                    ..default()
-                                })
+                                    BackgroundColor(
+                                        DEFENSE_COLOR.with_alpha(DEFENSE_COLOR_EMPTY_ALPHA).into(),
+                                    ),
+                                ))
                                 .with_children(|defense_ui| {
-                                    defense_ui.spawn(NodeBundle {
-                                        style: Style {
+                                    defense_ui.spawn((
+                                        Node {
                                             width: Val::Percent(
                                                 100.0 * defense_data.get_percentage(),
                                             ),
                                             height: Val::Percent(100.0),
                                             ..default()
                                         },
-                                        background_color: DEFENSE_COLOR
-                                            .with_alpha(DEFENSE_COLOR_FILLED_ALPHA)
-                                            .into(),
-                                        ..default()
-                                    });
+                                        BackgroundColor(
+                                            DEFENSE_COLOR
+                                                .with_alpha(DEFENSE_COLOR_FILLED_ALPHA)
+                                                .into(),
+                                        ),
+                                    ));
                                 });
                         });
                     }

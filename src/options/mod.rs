@@ -1,15 +1,17 @@
 //! Exposes a plugin and CLI to congigure a small number of settings for the game.
 use bevy::{
     app::{App, Plugin, Startup, Update},
-    core_pipeline::{core_2d::Camera2d, core_3d::Camera3d, tonemapping::Tonemapping},
+    camera::{Camera2d, Camera3d, Hdr},
+    core_pipeline::tonemapping::Tonemapping,
     ecs::{
+        entity::Entity,
         query::{With, Without},
-        schedule::IntoSystemConfigs,
-        system::{Query, ResMut, Resource},
+        resource::Resource,
+        schedule::IntoScheduleConfigs,
+        system::{Commands, Query, ResMut},
     },
     log::error,
     prelude::Deref,
-    render::camera::Camera,
     state::{condition::in_state, state::OnEnter},
 };
 use leafwing_input_manager::prelude::InputManagerPlugin;
@@ -24,8 +26,11 @@ mod input;
 
 use input::get_input_bindings;
 use std::default::Default;
+#[cfg(not(feature = "playtest"))]
 use std::env::current_dir;
+#[cfg(not(feature = "playtest"))]
 use std::fs::{DirBuilder, File};
+#[cfg(not(feature = "playtest"))]
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -33,62 +38,65 @@ use self::display::{set_window_icon, toggle_fullscreen_system, toggle_zoom_syste
 
 use self::input::spawn_menu_explorer_system;
 
-#[cfg_attr(
-    all(not(target_arch = "wasm32"), feature = "cli"),
-    derive(argh::FromArgs)
-)]
+// Bevy 0.20 port: upstream's optional `cli` feature (argh-based CLI
+// parsing) was removed along with the feature itself; these options
+// now always take their defaults.
 #[derive(Default, Debug, PartialEq, Eq)]
 /// Options used to start Thetawave. As many of these as possible are inferred/have "sensible"
 /// defaults.
 pub struct GameInitCLIOptions {
-    #[cfg_attr(all(not(target_arch = "wasm32"), feature = "cli"), argh(option))]
     /// the directory that is used for `bevy::asset::AssetPlugin`. This is generally
     /// 'EXECUTABLE_DIR/assets/' or 'CARGO_MANIFEST_DIR/assets'.
     pub assets_dir: Option<PathBuf>,
-    #[cfg_attr(
-        all(not(target_arch = "wasm32"), feature = "cli", feature = "arcade"),
-        argh(switch, short = 'a')
-    )]
     /// whether to use instructions, serial port IO, etc. specific to deploying on an arcade
-    /// machine. This should almost never be enabled.
+    /// machine. Unused: the serial-port arcade-cabinet support was removed in
+    /// the Bevy 0.20 port (`bevy_serialport` has no compatible release).
     pub arcade: bool,
 }
 impl GameInitCLIOptions {
     pub fn from_environ_on_supported_platforms_with_default_fallback() -> Self {
-        #[cfg(all(not(target_arch = "wasm32"), feature = "cli"))]
-        {
-            return argh::from_env();
-        }
-        #[allow(unreachable_code)] // The CLI provides the default.
         Default::default()
     }
 }
 
 fn apply_game_options_system(
+    mut commands: Commands,
     mut game_options: ResMut<GameOptions>,
-    mut camera_2d_query: Query<
-        (&mut Camera, &mut Tonemapping),
-        (With<Camera2d>, Without<Camera3d>),
-    >,
-    mut camera_3d_query: Query<
-        (&mut Camera, &mut Tonemapping),
-        (With<Camera3d>, Without<Camera2d>),
-    >,
+    camera_2d_query: Query<(Entity, Option<&Hdr>), (With<Camera2d>, Without<Camera3d>)>,
+    mut tonemapping_2d_query: Query<(&mut Tonemapping,), (With<Camera2d>, Without<Camera3d>)>,
+    camera_3d_query: Query<(Entity, Option<&Hdr>), (With<Camera3d>, Without<Camera2d>)>,
+    mut tonemapping_3d_query: Query<(&mut Tonemapping,), (With<Camera3d>, Without<Camera2d>)>,
 ) {
-    if let (Ok((mut camera_2d, mut tonemapping_2d)), Ok((mut camera_3d, mut tonemapping_3d))) = (
-        camera_2d_query.get_single_mut(),
-        camera_3d_query.get_single_mut(),
-    ) {
-        camera_2d.hdr = game_options.bloom_enabled;
-        camera_3d.hdr = game_options.bloom_enabled;
-
+    if let (Ok((camera_2d_entity, hdr_2d)), Ok((camera_3d_entity, hdr_3d))) =
+        (camera_2d_query.single(), camera_3d_query.single())
+    {
+        // Bevy 0.20 port: `Camera::hdr` became the `Hdr` marker component.
         if game_options.bloom_enabled {
-            *tonemapping_2d = Tonemapping::TonyMcMapface;
-            *tonemapping_3d = Tonemapping::TonyMcMapface;
+            if hdr_2d.is_none() {
+                commands.entity(camera_2d_entity).insert(Hdr);
+            }
+            if hdr_3d.is_none() {
+                commands.entity(camera_3d_entity).insert(Hdr);
+            }
         } else {
-            *tonemapping_2d = Tonemapping::None;
-            *tonemapping_3d = Tonemapping::None;
-            game_options.bloom_intensity = 0.0;
+            commands.entity(camera_2d_entity).remove::<Hdr>();
+            commands.entity(camera_3d_entity).remove::<Hdr>();
+        }
+
+        let tonemapping = if game_options.bloom_enabled {
+            Tonemapping::TonyMcMapface
+        } else {
+            Tonemapping::None
+        };
+
+        if let Ok((mut tonemapping_2d,)) = tonemapping_2d_query.single_mut() {
+            *tonemapping_2d = tonemapping;
+        }
+        if let Ok((mut tonemapping_3d,)) = tonemapping_3d_query.single_mut() {
+            *tonemapping_3d = tonemapping;
+            if !game_options.bloom_enabled {
+                game_options.bloom_intensity = 0.0;
+            }
         }
     } else {
         error!("Failed to get singleton 2d and 3d cameras to apply game opts");
@@ -135,6 +143,7 @@ impl Plugin for OptionsPlugin {
 }
 
 /// Creates config file in config directory from config file in this directory
+#[cfg(not(feature = "playtest"))]
 macro_rules! confgen {
     ( $($filename:expr),* ) => {
         {
@@ -158,21 +167,8 @@ macro_rules! confgen {
 }
 
 /// Generates the display config file
+#[cfg(not(feature = "playtest"))]
 pub(super) fn generate_config_files() {
     confgen!("display.ron");
     confgen!("input.ron");
-}
-
-#[cfg(all(test, not(target_arch = "wasm32"), feature = "cli"))]
-mod cli_tests {
-    use argh::FromArgs;
-    #[test]
-    fn test_cli_parse_asset_path_dir() {
-        assert_eq!(
-            super::GameInitCLIOptions::from_args(&["thetawave"], &["--assets-dir", "myassets/"])
-                .unwrap()
-                .assets_dir,
-            Some(std::path::PathBuf::from("myassets/"))
-        );
-    }
 }

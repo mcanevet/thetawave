@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use bevy_ecs::prelude::{Component, Entity};
-use bevy_ecs_macros::Event;
+use bevy_ecs_macros::Message;
 use bevy_time::{Timer, TimerMode};
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct DamageDealtEvent {
     pub damage: usize,
     pub target: Entity,

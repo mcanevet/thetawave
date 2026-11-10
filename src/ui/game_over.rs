@@ -4,15 +4,14 @@ use bevy::{
     asset::AssetServer,
     color::{Alpha, Color},
     ecs::{
-        event::EventWriter,
+        message::MessageWriter,
         system::{Commands, Res},
     },
-    hierarchy::BuildChildren,
-    text::{JustifyText, Text, TextStyle},
+    text::{Justify, TextColor, TextFont, TextLayout},
     time::{Timer, TimerMode},
     ui::{
-        node_bundles::{ImageBundle, NodeBundle, TextBundle},
-        BackgroundColor, FlexDirection, JustifyContent, Style, UiRect, Val,
+        widget::{ImageNode, Text},
+        BackgroundColor, FlexDirection, JustifyContent, Node, UiRect, Val,
     },
     utils::default,
 };
@@ -31,7 +30,7 @@ pub(super) fn setup_game_over_system(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     ui_assets: Res<UiAssets>,
-    mut change_bg_music_event_writer: EventWriter<ChangeBackgroundMusicEvent>,
+    mut change_bg_music_event_writer: MessageWriter<ChangeBackgroundMusicEvent>,
     current_game_shot_counts: Res<UserStatsByPlayerForCurrentGameCache>,
     current_game_enemy_mob_kill_counts: Res<MobKillsByPlayerForCurrentGame>,
     playing_on_arcade: Res<PlayingOnArcadeResource>,
@@ -48,42 +47,35 @@ pub(super) fn setup_game_over_system(
     };
 
     // fade music out
-    change_bg_music_event_writer.send(ChangeBackgroundMusicEvent {
+    change_bg_music_event_writer.write(ChangeBackgroundMusicEvent {
         fade_out: Some(Duration::from_secs(5)),
         ..default()
     });
 
     commands
-        .spawn(NodeBundle {
-            style: Style {
+        .spawn((Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 ..Default::default()
-            },
-            background_color: Color::srgba(0.0, 0.0, 0.0, 0.0).into(),
-            ..Default::default()
-        })
+            }, BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0))))
         .insert(GameOverCleanup)
         .with_children(|parent| {
             parent
-                .spawn(ImageBundle {
-                    image: asset_server.load("texture/game_over_background.png").into(),
-                    style: Style {
+                .spawn((ImageNode {
+    image: asset_server.load("texture/game_over_background.png"),
+    ..default()
+}, Node {
                         width: Val::Percent(100.0),
                         flex_direction: FlexDirection::Column,
                         height: Val::Percent(100.0),
                         justify_content: JustifyContent::FlexEnd,
                         ..Default::default()
-                    },
-                    background_color: Color::srgba(1.0, 1.0, 1.0, 1.0).into(),
-                    ..default()
-                })
+                    }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 1.0))))
                 .with_children(|parent| {
                     let font = ui_assets.lunchds_font.clone();
 
                     parent
-                        .spawn(NodeBundle {
-                            style: Style {
+                        .spawn((Node {
                                 width: Val::Auto,
                                 height: Val::Auto,
                                 margin: UiRect {
@@ -96,50 +88,37 @@ pub(super) fn setup_game_over_system(
 
                                 justify_content: JustifyContent::Center,
                                 ..Default::default()
-                            },
-                            background_color: BackgroundColor::from(Color::BLACK.with_alpha(0.9)),
-                            ..default()
-                        })
+                            }, BackgroundColor::from(Color::BLACK.with_alpha(0.9))))
                         .with_children(|parent| {
-                            parent.spawn(TextBundle {
-                                style: Style {
-                                    width: Val::Auto,
-                                    height: Val::Auto,
-                                    margin: UiRect::all(Val::Auto),
-                                    ..Default::default()
-                                },
-
-                                text: Text::from_section(
-                                    format!(
+                            parent.spawn((Text::new(format!(
                                         "Projectiles fired: {}\nAccuracy: {:.2}%\n\nEnemies destroyed:\n{}",
                                         total_shots_fired,
                                         accuracy_rate,
                                         super::pprint_mob_kills_from_data(
                                             &current_game_enemy_mob_kill_counts
                                         ),
-                                    ),
-                                    TextStyle {
-                                        font,
-                                        font_size: 32.0,
-                                        color: Color::WHITE,
-                                    },
-                                )
-                                .with_justify(JustifyText::Center),
-
-                                ..default()
-                            });
+                                    )), TextFont {
+    font: font.into(),
+    font_size: 32.0.into(),
+    ..Default::default()
+}, TextColor(Color::WHITE), TextLayout { justify: Justify::Center, ..Default::default() }, Node {
+                                    width: Val::Auto,
+                                    height: Val::Auto,
+                                    margin: UiRect::all(Val::Auto),
+                                    ..Default::default()
+                                }));
                         });
 
                     parent
-                        .spawn(ImageBundle {
-                            image: asset_server
+                        .spawn((ImageNode {
+    image: asset_server
                                 .load(if **playing_on_arcade {
                                     "texture/restart_game_prompt_arcade.png"
                                 } else {
                                     "texture/restart_game_prompt_keyboard.png"
-                                })
-                                .into(),
-                            style: Style {
+                                }),
+    ..default()
+}, Node {
                                 width: Val::Px(400.0),
                                 height: Val::Px(100.0),
                                 margin: UiRect {
@@ -150,9 +129,7 @@ pub(super) fn setup_game_over_system(
                                 },
                                 justify_content: JustifyContent::Center,
                                 ..Default::default()
-                            },
-                            ..Default::default()
-                        })
+                            }))
                         .insert(BouncingPromptComponent {
                             flash_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
                             is_active: true,

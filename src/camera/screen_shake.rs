@@ -1,18 +1,18 @@
 //! Shake the screen when the player receives damange. There is some randomness in the initial
 //! jolt, with the camera eventually moving back to the original location (centered)
 use bevy::{
-    core_pipeline::{core_2d::Camera2d, core_3d::Camera3d},
+    camera::{Camera2d, Camera3d},
     ecs::{
         component::Component,
-        event::EventReader,
+        message::MessageReader,
         query::{With, Without},
         system::{Query, Res},
     },
+    log::error,
     math::{Quat, Vec3},
-    prelude::{Entity, EventWriter},
+    prelude::{Entity, MessageWriter},
     time::Time,
     transform::components::Transform,
-    utils::tracing::error,
 };
 
 use thetawave_interface::camera::ScreenShakeEvent;
@@ -33,14 +33,14 @@ pub(super) struct ScreenShakeComponent {
 
 /// System for reading screen shake events and adding trauma from the events to the screen shake component
 pub(super) fn add_trauma_system(
-    mut screen_shake_event_reader: EventReader<ScreenShakeEvent>,
+    mut screen_shake_event_reader: MessageReader<ScreenShakeEvent>,
     mut camera_2d_query: Query<
         (&mut ScreenShakeComponent, &mut Transform),
         (With<Camera2d>, Without<Camera3d>),
     >,
 ) {
     for _event in screen_shake_event_reader.read() {
-        if let Ok((mut screen_shake, _transform)) = camera_2d_query.get_single_mut() {
+        if let Ok((mut screen_shake, _transform)) = camera_2d_query.single_mut() {
             screen_shake.trauma = (screen_shake.trauma + _event.trauma).min(1.0);
         };
     }
@@ -56,7 +56,7 @@ pub(super) fn screen_shake_system(
 ) {
     // There should only ever be 1 camera (for now, multiplayer shares a single screen, rather than
     // split screen.
-    match camera_2d_query.get_single_mut() {
+    match camera_2d_query.single_mut() {
         Ok((mut screen_shake, mut transform)) => {
             if screen_shake.trauma == 0. {
                 // TODO: change this so it doesn't use hard-coded values
@@ -71,7 +71,7 @@ pub(super) fn screen_shake_system(
             transform.rotation.z = screen_shake.shake_intensity.z * get_random_shake(&screen_shake);
 
             screen_shake.trauma = (screen_shake.trauma
-                - screen_shake.trauma_decay * time.delta_seconds_f64() as f32)
+                - screen_shake.trauma_decay * time.delta_secs_f64() as f32)
                 .max(0.0);
         }
         Err(e) => {
@@ -86,13 +86,13 @@ fn get_random_shake(screen_shake: &ScreenShakeComponent) -> f32 {
 
 /// Trigger a screen shake whenevr the player receives nonzero damage.
 pub(super) fn screen_shake_on_player_damage_system(
-    mut damage_dealt_events: EventReader<DamageDealtEvent>,
+    mut damage_dealt_events: MessageReader<DamageDealtEvent>,
     player_query: Query<Entity, With<PlayerComponent>>,
-    mut screen_shake_event_writer: EventWriter<ScreenShakeEvent>,
+    mut screen_shake_event_writer: MessageWriter<ScreenShakeEvent>,
 ) {
     for event in damage_dealt_events.read() {
         if player_query.contains(event.target) && event.damage > 0 {
-            screen_shake_event_writer.send(ScreenShakeEvent { trauma: 0.23 });
+            screen_shake_event_writer.write(ScreenShakeEvent { trauma: 0.23 });
         }
     }
 }

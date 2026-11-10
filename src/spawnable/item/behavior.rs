@@ -1,6 +1,7 @@
 use bevy::log::info;
 use bevy::prelude::{
-    in_state, App, Commands, Component, EventReader, IntoSystemConfigs, Plugin, Query, Update, With,
+    in_state, App, Commands, Component, IntoScheduleConfigs, MessageReader, Plugin, Query, Update,
+    With,
 };
 use serde::Deserialize;
 use thetawave_interface::{
@@ -41,7 +42,7 @@ pub struct OnCollectFullHeal;
 
 pub fn on_collect_increase_max_health_system(
     mut commands: Commands,
-    mut collision_events: EventReader<SortedCollisionEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
     item_query: Query<&OnCollectIncreaseMaxHealth, With<ItemComponent>>,
     mut player_query: Query<&mut HealthComponent, With<PlayerComponent>>,
 ) {
@@ -64,7 +65,7 @@ pub fn on_collect_increase_max_health_system(
 
 pub fn on_collect_full_heal_system(
     mut commands: Commands,
-    mut collision_events: EventReader<SortedCollisionEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
     item_query: Query<&OnCollectFullHeal, With<ItemComponent>>,
     mut player_query: Query<&mut HealthComponent, With<PlayerComponent>>,
 ) {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy_ecs::{bundle::Bundle, component::Component, event::Event, system::Resource};
+use bevy_ecs::{bundle::Bundle, component::Component, message::Message, resource::Resource};
 use bevy_time::{Timer, TimerMode};
 use serde::Deserialize;
 
@@ -34,7 +34,7 @@ pub struct AbilityDescriptionsResource {
 }
 
 /// Event for triggering ability systems to fire when criteria like inputs and cooldowns are met
-#[derive(Event, Debug)]
+#[derive(Message, Debug)]
 pub struct ActivateAbilityEvent {
     /// ID of the player that activated the ability
     pub player_id: PlayerIDComponent,

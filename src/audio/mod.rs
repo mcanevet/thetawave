@@ -1,6 +1,6 @@
 //! Exposes a plugin that starts, stops, and modulates in-game audio when events are emitted
 use bevy::prelude::{
-    in_state, not, App, EventReader, IntoSystemConfigs, Plugin, Res, Resource, Startup, Update,
+    in_state, not, App, IntoScheduleConfigs, MessageReader, Plugin, Res, Resource, Startup, Update,
 };
 use bevy_kira_audio::prelude::{AudioApp, AudioChannel, AudioControl, AudioEasing, AudioTween};
 use thetawave_assets::GameAudioAssets;
@@ -16,8 +16,8 @@ pub(super) struct ThetawaveAudioPlugin;
 
 impl Plugin for ThetawaveAudioPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<PlaySoundEffectEvent>();
-        app.add_event::<ChangeBackgroundMusicEvent>();
+        app.add_message::<PlaySoundEffectEvent>();
+        app.add_message::<ChangeBackgroundMusicEvent>();
 
         app.add_audio_channel::<BackgroundMusicAudioChannel>()
             .add_audio_channel::<MenuAudioChannel>()
@@ -54,7 +54,7 @@ fn set_audio_volume_system(
 
 /// Play sound effects when we receive events. This should be called every frame for snappy audio.
 fn play_sound_effect_system(
-    mut play_sound_event_reader: EventReader<PlaySoundEffectEvent>,
+    mut play_sound_event_reader: MessageReader<PlaySoundEffectEvent>,
     audio_channel: Res<AudioChannel<SoundEffectsAudioChannel>>,
     audio_assets: Res<GameAudioAssets>,
 ) {
@@ -74,11 +74,11 @@ fn play_sound_effect_system(
 /// - The system supports looping the new track from a specified point and applying a fade-in effect if specified.
 ///
 /// Parameters:
-/// - `EventReader<ChangeBackgroundMusicEvent>`: Reads events that dictate when and how to change background music.
+/// - `MessageReader<ChangeBackgroundMusicEvent>`: Reads events that dictate when and how to change background music.
 /// - `AudioChannel<BackgroundMusicAudioChannel>`: Controls the background music audio channel, allowing for stop, play, and fade effects.
 /// - `GameAudioAssets`: A resource that holds all available audio assets.
 fn change_bg_music_system(
-    mut change_bg_music_event_reader: EventReader<ChangeBackgroundMusicEvent>,
+    mut change_bg_music_event_reader: MessageReader<ChangeBackgroundMusicEvent>,
     audio_channel: Res<AudioChannel<BackgroundMusicAudioChannel>>,
     audio_assets: Res<GameAudioAssets>,
 ) {

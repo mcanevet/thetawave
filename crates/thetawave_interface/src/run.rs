@@ -1,4 +1,4 @@
-use bevy_ecs::prelude::Event;
+use bevy_ecs::prelude::Message;
 
 pub enum RunOutcomeType {
     Victory,
@@ -10,10 +10,10 @@ pub enum RunDefeatType {
     DefenseDestroyed,
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct RunEndEvent {
     pub outcome: RunOutcomeType,
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct CyclePhaseEvent;

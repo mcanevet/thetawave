@@ -1,4 +1,4 @@
-use bevy::prelude::{EventWriter, Vec2};
+use bevy::prelude::{MessageWriter, Vec2};
 use rand::Rng;
 use serde::Deserialize;
 use strum_macros::Display;
@@ -30,7 +30,7 @@ impl ConsumableLootDrop {
     /// Roll for loot drops and spawn consumables
     pub fn roll_and_spawn(
         &self,
-        consumable_event_writer: &mut EventWriter<SpawnConsumableEvent>,
+        consumable_event_writer: &mut MessageWriter<SpawnConsumableEvent>,
         position: Vec2,
     ) {
         let mut rng = rand::thread_rng();
@@ -42,7 +42,7 @@ impl ConsumableLootDrop {
 
             if roll {
                 // spawn consumable if roll is successful
-                consumable_event_writer.send(SpawnConsumableEvent {
+                consumable_event_writer.write(SpawnConsumableEvent {
                     consumable_type: self.consumable.clone(),
                     position,
                 });

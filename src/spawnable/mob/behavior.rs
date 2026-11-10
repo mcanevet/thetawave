@@ -1,9 +1,6 @@
 use bevy::{
     math::{Vec3, Vec3Swizzles},
-    prelude::{
-        default, Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Query, Res,
-        Transform,
-    },
+    prelude::{default, Commands, Entity, MessageReader, MessageWriter, Query, Res, Transform},
     time::Time,
 };
 use serde::Deserialize;
@@ -42,7 +39,7 @@ pub enum MobSegmentControlBehavior {
 /// Manages excuteing behaviors of mobs
 pub fn mob_execute_behavior_system(
     mut commands: Commands,
-    mut collision_events: EventReader<SortedCollisionEvent>,
+    mut collision_events: MessageReader<SortedCollisionEvent>,
     time: Res<Time>,
     mut mob_query: Query<(
         Entity,
@@ -52,14 +49,14 @@ pub fn mob_execute_behavior_system(
         Option<&BossComponent>,
     )>,
     player_query: Query<(Entity, &PlayerIncomingDamageComponent)>,
-    mut spawn_effect_event_writer: EventWriter<SpawnEffectEvent>,
-    mut spawn_consumable_event_writer: EventWriter<SpawnConsumableEvent>,
-    mut spawn_item_event_writer: EventWriter<SpawnItemEvent>,
-    mut spawn_mob_event_writer: EventWriter<SpawnMobEvent>,
-    mut mob_destroyed_event_writer: EventWriter<MobDestroyedEvent>,
-    mut damage_dealt_event_writer: EventWriter<DamageDealtEvent>,
+    mut spawn_effect_event_writer: MessageWriter<SpawnEffectEvent>,
+    mut spawn_consumable_event_writer: MessageWriter<SpawnConsumableEvent>,
+    mut spawn_item_event_writer: MessageWriter<SpawnItemEvent>,
+    mut spawn_mob_event_writer: MessageWriter<SpawnMobEvent>,
+    mut mob_destroyed_event_writer: MessageWriter<MobDestroyedEvent>,
+    mut damage_dealt_event_writer: MessageWriter<DamageDealtEvent>,
     loot_drops_resource: Res<LootDropsResource>,
-    mut sound_effect_event_writer: EventWriter<PlaySoundEffectEvent>,
+    mut sound_effect_event_writer: MessageWriter<PlaySoundEffectEvent>,
     game_parameters: Res<GameParametersResource>,
 ) {
     // Get all contact events first (can't be read more than once within a system)
@@ -99,7 +96,7 @@ pub fn mob_execute_behavior_system(
                                 }
                             };
 
-                            spawn_mob_event_writer.send(SpawnMobEvent {
+                            spawn_mob_event_writer.write(SpawnMobEvent {
                                 mob_type: mob_spawner.mob_type.clone(),
                                 position,
                                 rotation: mob_transform.rotation, // passed rotation of the parent mob
@@ -137,12 +134,12 @@ pub fn mob_execute_behavior_system(
                 }
                 MobBehavior::DieAtZeroHealth => {
                     if mob_health.is_dead() {
-                        sound_effect_event_writer.send(PlaySoundEffectEvent {
+                        sound_effect_event_writer.write(PlaySoundEffectEvent {
                             sound_effect_type: SoundEffectType::MobExplosion,
                         });
 
                         // spawn mob explosion
-                        spawn_effect_event_writer.send(SpawnEffectEvent {
+                        spawn_effect_event_writer.write(SpawnEffectEvent {
                             effect_type: EffectType::MobExplosion,
                             transform: Transform {
                                 translation: mob_transform.translation,
@@ -165,10 +162,10 @@ pub fn mob_execute_behavior_system(
                         );
 
                         // despawn mob
-                        commands.entity(entity).despawn_recursive();
+                        commands.entity(entity).despawn();
 
                         // apply disconnected behaviors to connected mob segments
-                        mob_destroyed_event_writer.send(MobDestroyedEvent {
+                        mob_destroyed_event_writer.write(MobDestroyedEvent {
                             entity,
                             mob_type: mob_component.mob_type.clone(),
                             is_boss: boss_tag.is_some(),
@@ -185,7 +182,7 @@ fn receive_damage_on_impact(
     entity: Entity,
     collision_events: &[&SortedCollisionEvent],
     player_query: &Query<(Entity, &PlayerIncomingDamageComponent)>,
-    damage_dealt_event_writer: &mut EventWriter<DamageDealtEvent>,
+    damage_dealt_event_writer: &mut MessageWriter<DamageDealtEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -198,7 +195,7 @@ fn receive_damage_on_impact(
                 if entity == *mob_entity {
                     for (player_entity_q, _) in player_query.iter() {
                         if player_entity_q == *player_entity && *player_damage > 0 {
-                            damage_dealt_event_writer.send(DamageDealtEvent {
+                            damage_dealt_event_writer.write(DamageDealtEvent {
                                 damage: *player_damage,
                                 target: *mob_entity,
                             });
@@ -211,7 +208,7 @@ fn receive_damage_on_impact(
                 mob_damage_2,
             } => {
                 if entity == *mob_entity_1 && *mob_damage_2 > 0 {
-                    damage_dealt_event_writer.send(DamageDealtEvent {
+                    damage_dealt_event_writer.write(DamageDealtEvent {
                         damage: *mob_damage_2,
                         target: *mob_entity_1,
                     });
@@ -222,13 +219,11 @@ fn receive_damage_on_impact(
                 mob_damage: _,
                 mob_segment_entity: _,
                 mob_segment_damage,
-            } => {
-                if entity == *mob_entity && *mob_segment_damage > 0 {
-                    damage_dealt_event_writer.send(DamageDealtEvent {
-                        damage: *mob_segment_damage,
-                        target: *mob_entity,
-                    });
-                }
+            } if entity == *mob_entity && *mob_segment_damage > 0 => {
+                damage_dealt_event_writer.write(DamageDealtEvent {
+                    damage: *mob_segment_damage,
+                    target: *mob_entity,
+                });
             }
 
             _ => {}
@@ -241,7 +236,7 @@ fn deal_damage_to_player_on_impact(
     entity: Entity,
     collision_events: &[&SortedCollisionEvent],
     player_query: &Query<(Entity, &PlayerIncomingDamageComponent)>,
-    damage_dealt_event_writer: &mut EventWriter<DamageDealtEvent>,
+    damage_dealt_event_writer: &mut MessageWriter<DamageDealtEvent>,
 ) {
     for collision_event in collision_events.iter() {
         if let SortedCollisionEvent::PlayerToMobContact {
@@ -257,7 +252,7 @@ fn deal_damage_to_player_on_impact(
                     let damage =
                         (player_incoming_damage.multiplier * *mob_damage as f32).round() as usize;
                     if player_entity_q == *player_entity && damage > 0 {
-                        damage_dealt_event_writer.send(DamageDealtEvent {
+                        damage_dealt_event_writer.write(DamageDealtEvent {
                             damage,
                             target: player_entity_q,
                         });
@@ -274,10 +269,10 @@ fn explode_on_impact(
     commands: &mut Commands,
     entity: Entity,
     collision_events: &[&SortedCollisionEvent],
-    spawn_effect_event_writer: &mut EventWriter<SpawnEffectEvent>,
+    spawn_effect_event_writer: &mut MessageWriter<SpawnEffectEvent>,
     transform: &Transform,
     game_parameters: &GameParametersResource,
-    sound_effect_event_writer: &mut EventWriter<PlaySoundEffectEvent>,
+    sound_effect_event_writer: &mut MessageWriter<PlaySoundEffectEvent>,
 ) {
     for collision_event in collision_events.iter() {
         match collision_event {
@@ -287,13 +282,13 @@ fn explode_on_impact(
                 player_damage: _,
                 mob_damage: _,
             } => {
-                sound_effect_event_writer.send(PlaySoundEffectEvent {
+                sound_effect_event_writer.write(PlaySoundEffectEvent {
                     sound_effect_type: SoundEffectType::MobExplosion,
                 });
                 // remove faction check to allow allied mobs to harm players
                 if entity == *mob_entity {
                     // spawn mob explosion
-                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                    spawn_effect_event_writer.write(SpawnEffectEvent {
                         effect_type: EffectType::MobExplosion,
                         transform: Transform {
                             translation: transform.translation,
@@ -307,7 +302,7 @@ fn explode_on_impact(
                         ..default()
                     });
                     // despawn mob
-                    commands.entity(entity).despawn_recursive();
+                    commands.entity(entity).despawn();
                     continue;
                 }
             }
@@ -315,12 +310,12 @@ fn explode_on_impact(
                 mob_entity_1,
                 mob_damage_2: _,
             } => {
-                sound_effect_event_writer.send(PlaySoundEffectEvent {
+                sound_effect_event_writer.write(PlaySoundEffectEvent {
                     sound_effect_type: SoundEffectType::MobExplosion,
                 });
                 if entity == *mob_entity_1 {
                     // spawn mob explosion
-                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                    spawn_effect_event_writer.write(SpawnEffectEvent {
                         effect_type: EffectType::MobExplosion,
                         transform: Transform {
                             translation: transform.translation,
@@ -334,7 +329,7 @@ fn explode_on_impact(
                         ..default()
                     });
                     // despawn mob
-                    commands.entity(entity).despawn_recursive();
+                    commands.entity(entity).despawn();
                     continue;
                 }
             }
@@ -344,11 +339,11 @@ fn explode_on_impact(
                 mob_segment_entity: _,
                 mob_segment_damage: _,
             } => {
-                sound_effect_event_writer.send(PlaySoundEffectEvent {
+                sound_effect_event_writer.write(PlaySoundEffectEvent {
                     sound_effect_type: SoundEffectType::MobExplosion,
                 });
                 if entity == *mob_entity {
-                    spawn_effect_event_writer.send(SpawnEffectEvent {
+                    spawn_effect_event_writer.write(SpawnEffectEvent {
                         effect_type: EffectType::MobExplosion,
                         transform: Transform {
                             translation: transform.translation,
@@ -361,7 +356,7 @@ fn explode_on_impact(
                         },
                         ..default()
                     });
-                    commands.entity(entity).despawn_recursive();
+                    commands.entity(entity).despawn();
                     continue;
                 }
             }

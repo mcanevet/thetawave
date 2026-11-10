@@ -1,139 +1,75 @@
-# <img src="https://assets.thetawave.metalmancy.tech/promo/thetawave_logo_animated_banner.gif">
+# thetawave — ported real-world Leafwing fixture
 
-[![Demo](https://img.shields.io/badge/Demo-Play%20Now%21-blue)](https://thetawave.metalmancy.tech)
-[![Build](https://github.com/thetawavegame/thetawave/actions/workflows/ci.yml/badge.svg?)](https://github.com/thetawavegame/thetawave/actions/workflows/ci.yml)
-[![Discord](https://img.shields.io/badge/chat-on%20discord-green.svg?logo=discord&logoColor=fff&labelColor=1e1c24&color=8d5b3f)](https://discord.gg/4smxjcheE5)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## NOTICE — upstream attribution
 
-## What is Thetawave?
+- **Upstream project**: Theta Wave — <https://github.com/thetawavegame/thetawave>
+  (formerly `mdrummies/thetawave`)
+- **Commit ported from**: `94fad04fb913bb50245ef33d96abc95ca8cd2355`
+  (upstream `main`, 2024-12-20)
+- **Upstream license**: MIT — kept verbatim in [`LICENSE.upstream`](LICENSE.upstream)
+  (Copyright (c) 2022 Theta Wave)
+- **Statement of modifications**: ported to Bevy 0.20 /
+  leafwing-input-manager 0.22 (crates.io release; upstream pinned a
+  git revision); companion crates bumped to their Bevy-0.20-compatible
+  releases; assets reduced to the headless-minimum set — real sound
+  files (~13MB) replaced by one tiny silent stand-in WAV with every
+  dynamic-asset key repointed at it, ~55 premium art files that
+  upstream serves from a private S3 bucket (absent even from a
+  pristine upstream checkout) replaced by 1×1 placeholder PNGs,
+  `fonts/Lunchds.ttf` — "Lunchtime Doubly So" by codeman38
+  (<https://zone38.net/>), a 100%-free dafont.com font (license asks
+  for credit; credit hereby given) absent from the
+  upstream repo but required by its asset lists — added from an
+  equivalent public copy; playback-only/steam/wasm scaffolding and
+  the optional `cli` feature (argh) removed; local sqlite
+  persistence (thetawave_storage) KEPT as an off-by-default
+  `storage` feature, same as upstream — excluded from the playtest
+  battery. See "Port notes" below for the full
+  list.
 
-Thetawave is a physics-based space shooter with procedurally generated levels, diverse foes, and distinct characters. As an open-source project, it invites collaboration and creativity from the community, allowing enthusiasts and developers to contribute to its evolution. This aspect of open-source development adds a unique dimension to Thetawave, as it grows and diversifies with inputs from its user base. Engaging in both gameplay and development, players and developers alike can experience the thrill of space combat while shaping the game's future.
+## What this fixture is
 
-## Gameplay
+A REAL third-party game — nobody involved in bevy_playtest wrote it —
+vendored into the fixture battery to prove bevy_playtest's
+declared-tier input discovery machinery (Leafwing reader,
+intent-tap, reconciliation)
+against a game with RON-loaded `InputMap`s, multiple `Actionlike`
+types, real gameplay actions, and no knowledge of bevy_playtest.
 
-<div>
-  <img src="https://assets.thetawave.metalmancy.tech/promo/gameplay_1.gif" width="400">
-  <img src="https://assets.thetawave.metalmancy.tech/promo/gameplay_2.gif" width="400">
-</div>
+It is deliberately NOT a known-answer oracle: there is no ground-truth
+file and no accuracy claim. The battery proves the game boots headless
+under takeover and reacts to a real declared action; the demo-level
+discovery assertions prove the reader enumerates the game's actual
+`InputMap`s. Honest claims only.
 
-## Controls
+## Port notes (Bevy 0.14.2 → 0.20)
 
-| Action            | Keyboard 🖮            | Controller 🎮      |
-| ----------------- | --------------------- | ----------------- |
-| 🕹️ Movement        | 'WASD' / Arrow Keys   | D-Pad             |
-| 🔫 Fire Weapon     | Left Click / Spacebar | Right Bumper (RB) |
-| 💥 Special Ability | Right Click / Shift   | Left Bumper (LB)  |
+Companion-crate bumps: `bevy_rapier2d` 0.37, `bevy_kira_audio` 0.27,
+`bevy_asset_loader` 0.28, `leafwing-input-manager` git-rev → 0.22.
+(Detailed migration notes are recorded in the port commit itself.)
 
-## How to Play
+Upstream in-crate tests are restored where portable. The `cli`
+(argh-based flag parsing) feature and its test were removed with
+this port; the `storage` crate survives as an optional
+off-by-default `storage` feature (upstream parity), so its test
+exists here but is excluded from the playtest battery, which never
+enables the feature. The argh dependency went with the removed `cli`
+feature.
 
-**Objective:** Protect the planet from invading enemies!
+## Running
 
-**Game Over Conditions:**
-- When all players' health bars are depleted from damage.
-- When the blue defense bar is depleted (occurs when enemies reach the bottom of the arena).
+Standard battery tier (same as every fixture):
 
-**Power-Ups:**
+```sh
+cargo test --manifest-path fixtures/Cargo.toml \
+  -p fixture_thetawave --features playtest --test playtest \
+  -- --test-threads=1
+```
 
-<table>
-  <tr>
-    <td><img src="https://assets.thetawave.metalmancy.tech/promo/health_wrench.png"></td>
-    <td>Wrenches restore health.</td>
-  </tr>
-  <tr>
-    <td><img src="https://assets.thetawave.metalmancy.tech/promo/money.png"></td>
-    <td>Gems increase fire rate.</td>
-  </tr>
-  <tr>
-    <td><img src="https://assets.thetawave.metalmancy.tech/promo/armor.png"></td>
-    <td>Armor negates damage.</td>
-  </tr>
-  <tr>
-    <td><img src="https://assets.thetawave.metalmancy.tech/promo/gain_projectiles.png"></td>
-  <td>Energy orbs give additional projectiles.</td>
-  </tr>
-</table>
+`--test-threads=1` is required: `run_scenario` is exclusive per process.
 
-**Special Mechanics:**
-- Letting cargo hauler mobs reach the bottom of the arena heals the defense bar.
+Debugging a scenario directly (live logs, quick re-runs):
 
-## Building and Playing Locally
-
-While you can play [in the browser](https://thetawave.metalmancy.tech) (works best on Google Chrome...for now), you can
-play offline in a few ways. The simplest way to play a native build of the game offline is to download the latest
-[Github release](https://github.com/thetawavegame/thetawave/releases) for Windows or Linux. Then run the executable.
-
-To run the game after compiling locally, do the following.
-
-0. Clone the repository `git clone https://github.com/thetawavegame/thetawave.git`
-0. Download our assets.
-
-   One way is to download a recent Linux `.tar.gz` release, and extract the `assets/` directory in the tarball into your
-   local `assets/` directory. We do so in the following Bash command. In Windows, just copy the files manually. Replace
-   the link with that of a build from the [latest release](https://github.com/thetawavegame/thetawave/releases),
-   especially if you are running off of the `main` branch.
-
-   ```bash
-
-   curl -Ls https://github.com/thetawavegame/thetawave/releases/download/v0.2.0/thetawave-0.2.0-x86_64-unknown-linux-gnu.tar.gz  \
-       | tar -xz -C assets/ --strip-components=2 --wildcards "*/assets/*"
-   ```
-
-   If when running the `main` branch you still have missing assets, it means that we are using assets that are not yet
-   published in a release. In that case, you might checkout the latest tag. Find it by running `git tag` and then
-   execute, for example, `git checkout v0.2.0`.
-
-0. Compile/run using [Cargo](https://github.com/rust-lang/cargo) as follows.
-
-   ```bash
-   cargo run --release
-   ```
-
-0. Enable the install features you want. Our install features are as follows.
-
-   - `cli` - Enables start up parameters on the built `thetawave` executable.
-   - `storage` - Enables writing user stats to a local [SQLite](https://www.sqlite.org/) database.
-   - `arcade` - Enables arcade-specific features, namely through serial communication to a microcontroller.
-
-   One can run using install features as follows.
-
-   ```bash
-   cargo run --release --features "storage,cli,arcade"
-   ```
-
-## How to Contribute
-
-We welcome contributions from all community members. Your insights and improvements help us grow.
-
-For complete guidelines on contributing, please see our [Contributing Guide](CONTRIBUTING.md). It includes all the necessary information on how you can participate in shaping Thetawave.
-
-## Team
-
-<table>
-  <tr>
-    <td><img src="https://avatars.githubusercontent.com/u/15306815" height="100"></td>
-    <td><strong>@cdsupina</strong> 💡<br><strong>Role:</strong> Creative Director<br><strong>Contribution:</strong> Visionary leadership and creative oversight.</td>
-  </tr>
-  <tr>
-    <td><img src="https://avatars.githubusercontent.com/u/22409608" height="100"></td>
-    <td><strong>@varoonp123</strong> 💻<br><strong>Role:</strong> Lead Programmer<br><strong>Contribution:</strong> Architect of the game's deployment and technical features.</td>
-  </tr>
-  <tr>
-    <td><img src="https://avatars.githubusercontent.com/u/26803198" height="100"></td>
-    <td><strong>@LordDeatHunter</strong> 🎨<br><strong>Role:</strong> Lead Artist<br><strong>Contribution:</strong> Key driver of the game's visual style and artistic assets.</td>
-  </tr>
-</table>
-
-
-## External Assets
-
-### 🎵 Music
-[Joel Schuman](https://joelhasa.site/) - Original Game Soundtrack
-
-### 📢 Sound Effects
-[*Space Ultimate Megapack*](https://gamesupply.itch.io/ultimate-space-game-mega-asset-package) - Comprehensive Space Audio Collection
-
-### 🎨 Art
-[Kadith's icons](https://kadith.itch.io/kadiths-free-icons) - Game Iconography
-
-### 📜 Fonts
-[*Space Madness*](https://modernmodron.itch.io/) - Font Design by Rose Frye
+```sh
+BEVY_PLAYTEST_SCENARIO=<scenario> cargo run --features playtest
+```

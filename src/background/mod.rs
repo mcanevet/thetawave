@@ -3,32 +3,31 @@
 use bevy::{
     app::{App, Plugin, Update},
     asset::{AssetServer, Assets, Handle},
+    camera::visibility::{InheritedVisibility, Visibility},
     color::{Alpha, Color},
-    core::Name,
+    ecs::name::Name,
     ecs::{
         component::Component,
         reflect::ReflectComponent,
-        schedule::{Condition, IntoSystemConfigs},
-        system::{Commands, Query, Res, ResMut, Resource},
+        resource::Resource,
+        schedule::{IntoScheduleConfigs, SystemCondition},
+        system::{Commands, Query, Res, ResMut},
     },
-    hierarchy::BuildChildren,
+    light::PointLight as PointLightComponent,
     log::error,
-    math::{
-        primitives::{Rectangle, Sphere},
-        Quat, Vec3,
-    },
-    pbr::{PbrBundle, PointLight, PointLightBundle, StandardMaterial},
+    material::AlphaMode,
+    math::{Quat, Vec3},
+    // `RectangleMeshBuilder::build` comes from this trait.
+    mesh::primitives::MeshBuilder,
+    mesh::{Mesh, Mesh3d, Meshable},
+    pbr::{MeshMaterial3d, StandardMaterial},
     reflect::Reflect,
-    render::{
-        alpha::AlphaMode,
-        mesh::{Mesh, Meshable},
-        view::{InheritedVisibility, Visibility},
-    },
-    scene::{Scene, SceneBundle},
+    shape::{Rectangle, Sphere},
     state::{condition::in_state, state::OnEnter},
     time::Time,
     transform::components::Transform,
     utils::default,
+    world_serialization::{WorldAsset, WorldAssetRoot},
 };
 use rand::{seq::IteratorRandom, Rng};
 use ron::de::from_bytes;
@@ -131,7 +130,7 @@ struct StarLightComponent;
 /// Rotate planets about their z axis
 fn rotate_planet_system(mut query: Query<(&mut Transform, &PlanetComponent)>, time: Res<Time>) {
     for (mut transform, planet) in query.iter_mut() {
-        transform.rotation *= Quat::from_rotation_y(planet.rotation_speed * time.delta_seconds());
+        transform.rotation *= Quat::from_rotation_y(planet.rotation_speed * time.delta_secs());
     }
 }
 
@@ -199,33 +198,27 @@ fn create_background_system(
 
         match get_random_asset_file("./assets/models/planets".to_string()) {
             Ok(file_name) => {
-                let planet_model_handle: Handle<Scene> =
+                let planet_model_handle: Handle<WorldAsset> =
                     asset_server.load(format!("models/planets/{file_name}#Scene0"));
 
-                planet_commands.insert(SceneBundle {
-                    scene: planet_model_handle,
-                    transform: planet_transform,
-                    ..default()
-                });
+                planet_commands.insert(WorldAssetRoot(planet_model_handle));
+                planet_commands.insert(planet_transform);
             }
             Err(_) => {
                 error!("Failed to get random model from ./assets/models/planets. Using fallback model instead.");
 
                 let maybe_planet_mesh = Sphere::new(10.0)
                     .mesh()
-                    .ico(backgrounds_res.planet_subdivisions);
+                    .ico(backgrounds_res.planet_subdivisions as u32);
 
                 match maybe_planet_mesh {
                     Ok(mesh) => {
-                        planet_commands.insert(PbrBundle {
-                            mesh: meshes.add(mesh),
-                            material: materials.add(StandardMaterial {
-                                base_color: Color::WHITE,
-                                ..default()
-                            }),
-                            transform: planet_transform,
+                        planet_commands.insert(Mesh3d(meshes.add(mesh)));
+                        planet_commands.insert(MeshMaterial3d(materials.add(StandardMaterial {
+                            base_color: Color::WHITE,
                             ..default()
-                        });
+                        })));
+                        planet_commands.insert(planet_transform);
                     }
                     Err(e) => {
                         error!("{e}\nCould not construct icosphere for planet. No planet model will be spawned.");
@@ -237,10 +230,14 @@ fn create_background_system(
 
     // Spawn a quad textured with a random background image
     // Create a quad mesh for the background
-    let quad_handle = meshes.add(Mesh::from(Rectangle::new(
-        backgrounds_res.background_rect_width,
-        backgrounds_res.background_rect_height,
-    )));
+    let quad_handle = meshes.add(
+        Rectangle::new(
+            backgrounds_res.background_rect_width,
+            backgrounds_res.background_rect_height,
+        )
+        .mesh()
+        .build(),
+    );
 
     // Choose a random background or fallback to a black color
     let mut background_commands = commands.spawn_empty();
@@ -263,12 +260,11 @@ fn create_background_system(
                         ..default()
                     });
 
-                    PbrBundle {
-                        mesh: quad_handle,
-                        material: material_handle,
-                        transform: background_transform,
-                        ..default()
-                    }
+                    (
+                        Mesh3d(quad_handle),
+                        MeshMaterial3d(material_handle),
+                        background_transform,
+                    )
                 }
                 Err(_) => {
                     error!("Failed to get random background texture from ./assets/texture/backgrounds. Using fallback material instead.");
@@ -279,12 +275,11 @@ fn create_background_system(
                         ..default()
                     });
 
-                    PbrBundle {
-                        mesh: quad_handle,
-                        material: material_handle,
-                        transform: background_transform,
-                        ..default()
-                    }
+                    (
+                        Mesh3d(quad_handle),
+                        MeshMaterial3d(material_handle),
+                        background_transform,
+                    )
                 }
             }
         );
@@ -310,18 +305,17 @@ fn create_background_system(
 
     let maybe_star_mesh = Sphere::new(backgrounds_res.star_radius)
         .mesh()
-        .ico(backgrounds_res.star_subdivisions);
+        .ico(backgrounds_res.star_subdivisions as u32);
 
     match maybe_star_mesh {
         Ok(mesh) => {
             // Spawn the star with a child point light of the same color
             commands
-                .spawn((PbrBundle {
-                    mesh: meshes.add(mesh),
-                    material: star_material,
-                    transform: star_transform,
-                    ..default()
-                },))
+                .spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(star_material),
+                    star_transform,
+                ))
                 .insert(GameCleanup)
                 .insert(CharacterSelectionCleanup)
                 .insert(Visibility::default())
@@ -329,15 +323,15 @@ fn create_background_system(
                 .insert(Name::new("Star"))
                 .with_children(|parent| {
                     parent
-                        .spawn(PointLightBundle {
-                            point_light: PointLight {
+                        .spawn((
+                            PointLightComponent {
                                 color: star_color,
                                 intensity: backgrounds_res.star_light_intensity,
                                 range: backgrounds_res.star_light_range,
                                 ..Default::default()
                             },
-                            ..Default::default()
-                        })
+                            star_transform,
+                        ))
                         .insert(StarLightComponent)
                         .insert(Name::new("Star Point Light"));
                 });

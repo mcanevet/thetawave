@@ -1,4 +1,4 @@
-use bevy_ecs::system::Resource;
+use bevy_ecs::resource::Resource;
 use serde::Deserialize;
 
 pub const DEFAULT_OPTIONS_PROFILE_ID: usize = 0;
