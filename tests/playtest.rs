@@ -100,20 +100,17 @@ fn run_menu_drive(tag: &str) -> bevy_playtest::state::PlaytestReport {
 #[cfg(feature = "playtest")]
 #[test]
 fn playtest_battery() {
-    // Golden verdict — the stalled-progress exhibit: a REAL game with
-    // registered state channels (Leafwing's reflected ActionState
-    // component counts) whose menu idle animation churns transforms
-    // while no verifiable state evolves. Exactly the churning-but-dead
-    // shape the progress-heartbeat oracle exists to catch. The stock
-    // demo also logs one camera dithering warning (informational).
-    // Both pinned; anything else is a regression.
+    // Golden verdict. The stock demo logs a camera dithering warning
+    // (informational); it is pinned, and anything else is a regression.
+    // Earlier bots stayed in the menu, whose idle animation churns
+    // transforms while no verifiable state evolves, and this run pinned
+    // that churning-but-dead `stalled_progress` finding too. The explore
+    // bot now gets past the menu into play, so the finding is gone; if a
+    // later bot stalls again, the run fails until it is pinned again.
     bevy_playtest::battery::run_and_expect_findings(
         env!("CARGO_BIN_EXE_fixture_thetawave"),
         bevy_playtest::battery::BUILTIN_BATTERY,
-        &[
-            ("log_warn", "bevy_core_pipeline::tonemapping", "dithering"),
-            ("stalled_progress", "world", "churning-but-dead"),
-        ],
+        &[("log_warn", "bevy_core_pipeline::tonemapping", "dithering")],
     );
 }
 
